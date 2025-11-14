@@ -1,0 +1,1177 @@
+{% extends "base.html" %}
+
+{% block title %}Recommendations - Yahoo NBA Fantasy Assistant{% endblock %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-12">
+        <h1><i class="fas fa-lightbulb"></i> Team Recommendations
+            <span class="badge bg-info" style="font-size: 0.5em;">{{ season }} Season</span>
+        </h1>
+        <p class="lead text-muted">Smart recommendations based on your Yahoo Fantasy team roster</p>
+        <hr>
+    </div>
+</div>
+
+<!-- Team Selection Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 d-flex align-items-center">
+                        {% if session.yahoo_my_team_logo %}
+                        <img src="{{ session.yahoo_my_team_logo }}" alt="Logo" class="me-2" style="width: 32px; height: 32px; border-radius: 4px;">
+                        {% else %}
+                        <i class="fas fa-users me-2"></i>
+                        {% endif %}
+                        <span class="dropdown">
+                            <button class="btn btn-link text-white text-decoration-none p-0 dropdown-toggle" type="button" id="teamDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: inherit; font-weight: inherit;">
+                                {% if session.yahoo_my_team_name %}
+                                {{ session.yahoo_my_team_name }}
+                                {% else %}
+                                Select Team
+                                {% endif %}
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="teamDropdown" id="teamDropdownMenu">
+                                <li><h6 class="dropdown-header">Select from Yahoo League</h6></li>
+                            </ul>
+                        </span>
+                    </h5>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if not session.yahoo_authenticated %}
+                <div class="alert alert-info mb-0">
+                    <i class="fab fa-yahoo"></i> 
+                    <strong>Connect Yahoo to select teams from your league!</strong>
+                    <a href="{{ url_for('yahoo.yahoo_login') }}" class="btn btn-warning btn-sm ms-2">
+                        <i class="fab fa-yahoo"></i> Connect Yahoo
+                    </a>
+                </div>
+                {% elif current_roster and current_roster|length > 0 %}
+                <div class="alert alert-success mb-0">
+                    <i class="fas fa-basketball-ball"></i> 
+                    <strong>Analyzing:</strong> {{ session.yahoo_my_team_name }} 
+                    {% if session.yahoo_league_name %}
+                    ({{ session.yahoo_league_name }})
+                    {% endif %}
+                    - {{ current_roster|length }} players
+                </div>
+                {% else %}
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>No team selected.</strong> Use the dropdown above to select a team from your Yahoo league.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if current_roster and current_roster|length > 0 %}
+<!-- Recommendations Section -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-list"></i> Recommended Actions ({{ recommendations|length }} recommendations)</h5>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary active" onclick="filterRecommendations('all')">All</button>
+                    <button class="btn btn-outline-success" onclick="filterRecommendations('single_swap')">Free Agents</button>
+                    <button class="btn btn-outline-info" onclick="filterRecommendations('trade')">Trades</button>
+                    <button class="btn btn-outline-warning" onclick="filterRecommendations('multi_swap')">Multi-Player</button>
+                    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#comparePlayersModal">
+                        <i class="fas fa-balance-scale"></i> Compare Players
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if recommendations %}
+                    {% for rec in recommendations %}
+                    <div class="recommendation-card recommendation-{{ rec.priority }} border rounded p-3 mb-3 {% if rec.type == 'trade' %}border-info bg-light{% endif %}" data-type="{{ rec.type }}" data-swap-type="{{ rec.swap_type }}">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h6 class="mb-1">
+                                    {% if rec.swap_type == '1-for-1' %}
+                                        <i class="fas fa-exchange-alt text-primary"></i> 1-for-1 Swap
+                                    {% elif rec.swap_type == '2-for-2' %}
+                                        <i class="fas fa-random text-info"></i> 2-for-2 Multi Swap
+                                    {% elif rec.swap_type == '3-for-3' %}
+                                        <i class="fas fa-random text-info"></i> 3-for-3 Multi Swap
+                                    {% elif rec.swap_type == '4-for-4' %}
+                                        <i class="fas fa-random text-warning"></i> 4-for-4 Big Swap
+                                    {% elif rec.swap_type == '5-for-5' %}
+                                        <i class="fas fa-random text-danger"></i> 5-for-5 Mega Swap
+                                    {% elif rec.swap_type == 'trade-2-for-2' %}
+                                        <i class="fas fa-people-arrows text-info"></i> 2-for-2 Trade
+                                        {% if rec.trade_partner %}
+                                        <span class="badge bg-info ms-2">with {{ rec.trade_partner }}</span>
+                                        {% endif %}
+                                    {% elif rec.swap_type == 'trade-3-for-3' %}
+                                        <i class="fas fa-people-arrows text-warning"></i> 3-for-3 Trade
+                                        {% if rec.trade_partner %}
+                                        <span class="badge bg-warning ms-2">with {{ rec.trade_partner }}</span>
+                                        {% endif %}
+                                    {% elif rec.swap_type == 'trade-4-for-4' %}
+                                        <i class="fas fa-people-arrows text-danger"></i> 4-for-4 Trade
+                                        {% if rec.trade_partner %}
+                                        <span class="badge bg-danger ms-2">with {{ rec.trade_partner }}</span>
+                                        {% endif %}
+                                    {% elif rec.swap_type == 'value-play' %}
+                                        <i class="fas fa-gem text-warning"></i> Value Opportunity
+                                    {% elif rec.swap_type == 'trade-1-for-1' or rec.type == 'trade' %}
+                                        <i class="fas fa-handshake text-info"></i> 1-for-1 Trade
+                                        {% if rec.trade_partner %}
+                                        <span class="badge bg-info ms-2">with {{ rec.trade_partner }}</span>
+                                        {% endif %}
+                                    {% elif rec.type == 'add_drop' %}
+                                        <i class="fas fa-exchange-alt text-primary"></i> Player Swap
+                                    {% elif rec.type == 'category_need' %}
+                                        <i class="fas fa-chart-bar text-info"></i> Category Target
+                                    {% else %}
+                                        <i class="fas fa-lightbulb text-warning"></i> Team Move
+                                    {% endif %}
+                                    
+                                    {% if rec.impact_score %}
+                                        <span class="badge bg-success ms-2">Impact: +{{ rec.impact_score }}</span>
+                                    {% endif %}
+                                </h6>
+                                <p class="mb-1">{{ rec.reasoning }}</p>
+                                {% if rec.all_categories and rec.all_categories|length > 0 %}
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="fas fa-chart-bar text-primary"></i> <strong>All Categories:</strong><br>
+                                        {% for cat in rec.all_categories %}
+                                            {% if '+' in cat or '↓' in cat %}
+                                                <span class="badge badge-sm bg-success me-1 mb-1">{{ cat }}</span>
+                                            {% elif '—' in cat %}
+                                                <span class="badge badge-sm bg-secondary me-1 mb-1">{{ cat }}</span>
+                                            {% else %}
+                                                <span class="badge badge-sm bg-danger me-1 mb-1">{{ cat }}</span>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                {% elif rec.category_improvements and rec.category_improvements|length > 0 or rec.category_declines and rec.category_declines|length > 0 %}
+                                {% if rec.category_improvements and rec.category_improvements|length > 0 %}
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="fas fa-arrow-up text-success"></i> <strong>Gains:</strong>
+                                        {% for cat in rec.category_improvements[:8] %}
+                                            <span class="badge badge-sm bg-success">{{ cat }}</span>
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                {% endif %}
+                                {% if rec.category_declines and rec.category_declines|length > 0 %}
+                                <div class="mt-1">
+                                    <small class="text-muted">
+                                        <i class="fas fa-arrow-down text-danger"></i> <strong>Losses:</strong>
+                                        {% for cat in rec.category_declines[:6] %}
+                                            <span class="badge badge-sm bg-danger">{{ cat }}</span>
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                            <span class="badge bg-{% if rec.priority == 'high' %}danger{% elif rec.priority == 'medium' %}warning{% else %}secondary{% endif %}">
+                                {% if rec.priority == 'high' %}High Priority{% elif rec.priority == 'medium' %}Medium Priority{% else %}Low Priority{% endif %}
+                            </span>
+                        </div>
+                        
+                        
+                        {% if rec.drop_players or rec.drop_player %}
+                        {# Support both new (drop_players) and old (drop_player) format #}
+                        {% set drops = rec.drop_players if rec.drop_players else [rec.drop_player] %}
+                        {% set adds = rec.add_players if rec.add_players else [rec.add_player] %}
+                        
+                        <div class="row">
+                            <div class="col-md-5">
+                                <div class="border rounded p-2 bg-light">
+                                    <small class="text-muted d-block"><i class="fas fa-minus-circle text-danger"></i> DROP ({{ drops|length }})</small>
+                                    {% for player in drops %}
+                                    <div class="{% if not loop.first %}mt-2 pt-2 border-top{% endif %}">
+                                        <strong class="text-danger">{{ player.name }}</strong><br>
+                                        <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
+                                        {% if player.fantasy_team %}
+                                        <br><small class="badge bg-warning text-dark"><i class="fas fa-users"></i> {{ player.fantasy_team }}</small>
+                                        {% endif %}
+                                        {% if player.stats %}
+                                        <div class="mt-1">
+                                            <small>
+                                                <span class="badge bg-secondary">{{ player.stats.points|default(0)|round(1) }} PTS</span>
+                                                <span class="badge bg-secondary">{{ player.stats.rebounds|default(0)|round(1) }} REB</span>
+                                                <span class="badge bg-secondary">{{ player.stats.assists|default(0)|round(1) }} AST</span>
+                                                <span class="badge bg-secondary">{{ player.stats.steals|default(0)|round(1) }} STL</span>
+                                                <span class="badge bg-secondary">{{ player.stats.blocks|default(0)|round(1) }} BLK</span>
+                                            </small>
+                                            <br>
+                                            <small>
+                                                <span class="badge bg-secondary">{{ player.stats.three_pointers_made|default(0)|round(1) }} 3PM</span>
+                                                {% set fg_made = player.stats.get('field_goals', 0) %}
+                                                {% set fg_att = player.stats.get('field_goal_attempts', 0) %}
+                                                {% set fg_pct = (fg_made / fg_att * 100) if fg_att > 0 else 0 %}
+                                                <span class="badge bg-secondary">{{ fg_pct|round(1) }}% FG</span>
+                                                {% set ft_made = player.stats.get('free_throws', 0) %}
+                                                {% set ft_att = player.stats.get('free_throw_attempts', 0) %}
+                                                {% set ft_pct = (ft_made / ft_att * 100) if ft_att > 0 else 0 %}
+                                                <span class="badge bg-secondary">{{ ft_pct|round(1) }}% FT</span>
+                                                <span class="badge bg-secondary">{{ player.stats.turnovers|default(0)|round(1) }} TO</span>
+                                            </small>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="col-md-2 text-center align-self-center">
+                                <i class="fas fa-arrow-right fa-2x text-success"></i>
+                            </div>
+                            <div class="col-md-5">
+                                <div class="border rounded p-2 bg-light">
+                                    <small class="text-muted d-block"><i class="fas fa-plus-circle text-success"></i> ADD ({{ adds|length }})</small>
+                                    {% for player in adds %}
+                                    <div class="{% if not loop.first %}mt-2 pt-2 border-top{% endif %}">
+                                        <strong class="text-success">{{ player.name }}</strong><br>
+                                        <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
+                                        {% if player.fantasy_team %}
+                                        <br>
+                                        {% if player.fantasy_team == 'Free Agent' %}
+                                        <small class="badge bg-success"><i class="fas fa-check-circle"></i> Free Agent</small>
+                                        {% else %}
+                                        <small class="badge bg-info"><i class="fas fa-handshake"></i> Trade from {{ player.fantasy_team }}</small>
+                                        {% endif %}
+                                        {% endif %}
+                                        {% if player.stats %}
+                                        <div class="mt-1">
+                                            <small>
+                                                <span class="badge bg-success">{{ player.stats.points|default(0)|round(1) }} PTS</span>
+                                                <span class="badge bg-success">{{ player.stats.rebounds|default(0)|round(1) }} REB</span>
+                                                <span class="badge bg-success">{{ player.stats.assists|default(0)|round(1) }} AST</span>
+                                                <span class="badge bg-success">{{ player.stats.steals|default(0)|round(1) }} STL</span>
+                                                <span class="badge bg-success">{{ player.stats.blocks|default(0)|round(1) }} BLK</span>
+                                            </small>
+                                            <br>
+                                            <small>
+                                                <span class="badge bg-success">{{ player.stats.three_pointers_made|default(0)|round(1) }} 3PM</span>
+                                                {% set fg_made = player.stats.get('field_goals', 0) %}
+                                                {% set fg_att = player.stats.get('field_goal_attempts', 0) %}
+                                                {% set fg_pct = (fg_made / fg_att * 100) if fg_att > 0 else 0 %}
+                                                <span class="badge bg-success">{{ fg_pct|round(1) }}% FG</span>
+                                                {% set ft_made = player.stats.get('free_throws', 0) %}
+                                                {% set ft_att = player.stats.get('free_throw_attempts', 0) %}
+                                                {% set ft_pct = (ft_made / ft_att * 100) if ft_att > 0 else 0 %}
+                                                <span class="badge bg-success">{{ ft_pct|round(1) }}% FT</span>
+                                                <span class="badge bg-success">{{ player.stats.turnovers|default(0)|round(1) }} TO</span>
+                                            </small>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% elif rec.type == 'category_need' %}
+                        <div class="alert alert-info mb-0">
+                            <strong><i class="fas fa-bullseye"></i> Target Category:</strong> <span class="text-uppercase">{{ rec.category }}</span>
+                            {% if rec.suggested_players %}
+                            <div class="mt-2">
+                                <strong>Top Available Players:</strong>
+                                <ul class="mb-0 mt-1">
+                                    {% for player in rec.suggested_players[:3] %}
+                                    <li>
+                                        <strong>{{ player.name }}</strong> ({{ player.team }}) - 
+                                        <span class="badge bg-primary">{{ player.stat_value|round(1) }} {{ rec.category|upper }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-primary" onclick="getMoreDetails('{{ rec.type }}')">
+                                <i class="fas fa-info-circle"></i> View Details
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                        <h4>Your Roster Looks Optimal!</h4>
+                        <p class="text-muted">No significant improvements found at this time.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if recommendations %}
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-users"></i> Current Team ({{ current_roster|length }} players)</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for player in current_roster %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        <strong>{{ player.name }}</strong><br>
+                        <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
+                    </div>
+                    <div class="text-end">
+                        <small>
+                            <span class="badge bg-info">{{ player.stats.points|default(0)|round(1) }} PTS</span>
+                            <span class="badge bg-info">{{ player.stats.rebounds|default(0)|round(1) }} REB</span>
+                            <span class="badge bg-info">{{ player.stats.assists|default(0)|round(1) }} AST</span>
+                        </small><br>
+                        <small class="mt-1">
+                            <span class="badge bg-secondary">{{ player.stats.steals|default(0)|round(1) }} STL</span>
+                            <span class="badge bg-secondary">{{ player.stats.blocks|default(0)|round(1) }} BLK</span>
+                            <span class="badge bg-secondary">{{ player.stats.three_pointers_made|default(0)|round(1) }} 3PM</span>
+                        </small><br>
+                        <small class="mt-1">
+                            {% set fg_made = player.stats.get('field_goals', 0) %}
+                            {% set fg_att = player.stats.get('field_goal_attempts', 0) %}
+                            {% set fg_pct = (fg_made / fg_att * 100) if fg_att > 0 else 0 %}
+                            <span class="badge bg-secondary">{{ fg_pct|round(1) }}% FG</span>
+                            {% set ft_made = player.stats.get('free_throws', 0) %}
+                            {% set ft_att = player.stats.get('free_throw_attempts', 0) %}
+                            {% set ft_pct = (ft_made / ft_att * 100) if ft_att > 0 else 0 %}
+                            <span class="badge bg-secondary">{{ ft_pct|round(1) }}% FT</span>
+                            <span class="badge bg-secondary">{{ player.stats.turnovers|default(0)|round(1) }} TO</span>
+                        </small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-info-circle"></i> Analysis Summary</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Season:</strong> {{ season }}</p>
+                <p><strong>Recommendations Found:</strong> {{ recommendations|length }}</p>
+                <p><strong>High Priority:</strong> {{ recommendations|selectattr('priority', 'equalto', 'high')|list|length }}</p>
+                <p><strong>Medium Priority:</strong> {{ recommendations|selectattr('priority', 'equalto', 'medium')|list|length }}</p>
+                <hr>
+                <p><strong><i class="fab fa-yahoo"></i> Team Source:</strong> Yahoo Fantasy</p>
+                <p class="mb-0">Analyzing your current roster for optimal improvements</p>
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-warning w-100" onclick="refreshRecommendations()">
+                        <i class="fas fa-sync"></i> Refresh Analysis
+                    </button>
+                </div>
+                <div class="mt-2">
+                    <a href="{{ url_for('index') }}" class="btn btn-sm btn-secondary w-100">
+                        <i class="fas fa-home"></i> Back to Home Page
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<!-- No team selected or empty roster - Show info message -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                {% if session.yahoo_my_team_name %}
+                <!-- Team selected but no players (pre-draft) -->
+                <i class="fas fa-calendar-times fa-3x text-warning mb-3"></i>
+                <h4 class="text-warning">No Players in Roster</h4>
+                <p class="text-muted">Team "<strong>{{ session.yahoo_my_team_name }}</strong>" has no players yet.</p>
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Pre-Draft Status:</strong> Recommendations will be available after your draft is complete and players are added to the roster.
+                </div>
+                <p class="text-muted small mt-3">
+                    You can select a different team from the dropdown above or wait until after the draft.
+                </p>
+                {% else %}
+                <!-- No team selected -->
+                <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                <h4 class="text-muted">No Team Selected</h4>
+                <p class="text-muted">Select a team from the dropdown above to get personalized recommendations.</p>
+                {% if session.yahoo_authenticated %}
+                <p class="text-info">
+                    <i class="fas fa-arrow-up"></i> Use the team selector at the top of the page
+                </p>
+                {% else %}
+                <a href="{{ url_for('yahoo.yahoo_login') }}" class="btn btn-warning btn-lg mt-3">
+                    <i class="fab fa-yahoo"></i> Connect Yahoo Fantasy
+                </a>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load Yahoo teams for dropdown (copied from matchup.html - WORKING VERSION)
+async function loadYahooTeamsForRecommendations() {
+    try {
+        console.log('[DEBUG] Starting to load Yahoo teams for recommendations...');
+        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const data = await response.json();
+        
+        console.log('[DEBUG] Leagues response:', data);
+        
+        if (data.success && data.leagues && data.leagues.length > 0) {
+            // Get first league's teams
+            const leagueKey = data.leagues[0].league_key;
+            console.log('[DEBUG] Fetching teams for league:', leagueKey);
+            
+            const teamsResponse = await fetch(`/yahoo/league/${leagueKey}/teams?include_roster=true`);
+            const teamsData = await teamsResponse.json();
+            
+            console.log('[DEBUG] Teams response:', teamsData);
+            console.log('[DEBUG] Number of teams:', teamsData.teams ? teamsData.teams.length : 0);
+            
+            if (teamsData.teams && teamsData.teams.length > 0) {
+                const teamDropdownMenu = document.getElementById('teamDropdownMenu');
+                
+                if (!teamDropdownMenu) {
+                    console.error('[DEBUG] Dropdown menu not found!');
+                    return;
+                }
+                
+                // Clear existing items (keep header)
+                const header = teamDropdownMenu.querySelector('.dropdown-header');
+                teamDropdownMenu.innerHTML = '';
+                if (header) {
+                    teamDropdownMenu.appendChild(header);
+                } else {
+                    const newHeader = document.createElement('li');
+                    newHeader.innerHTML = '<h6 class="dropdown-header">Select from Yahoo League</h6>';
+                    teamDropdownMenu.appendChild(newHeader);
+                }
+                
+                // Add teams to dropdown (EXACTLY like matchup.html)
+                teamsData.teams.forEach(team => {
+                    console.log('[DEBUG] Adding team:', team.name, 'Logo:', team.logo_url);
+                    
+                    const item = document.createElement('li');
+                    const link = document.createElement('a');
+                    link.className = 'dropdown-item';
+                    link.href = '#';
+                    link.textContent = team.name;
+                    link.onclick = (e) => {
+                        e.preventDefault();
+                        selectTeamForRecommendations(team);
+                    };
+                    item.appendChild(link);
+                    teamDropdownMenu.appendChild(item);
+                });
+                
+                console.log(`✅ Loaded ${teamsData.teams.length} teams into dropdown`);
+            } else {
+                console.warn('[DEBUG] No teams found in response');
+            }
+        } else {
+            console.warn('[DEBUG] No leagues found or API error');
+        }
+    } catch (error) {
+        console.error('[ERROR] Error loading Yahoo teams:', error);
+    }
+}
+
+// Select team for recommendations (copied from matchup.html - WORKING VERSION)
+async function selectTeamForRecommendations(team) {
+    if (!team || !team.team_key) return;
+    
+    console.log('[DEBUG] Selecting team:', team.name);
+    console.log('[DEBUG] Team data:', team);
+    
+    try {
+        // Extract league key from team_key (format: 466.l.92258.t.1)
+        const leagueKey = team.team_key.split('.t.')[0];
+        console.log('[DEBUG] Extracted league key:', leagueKey);
+        
+        // Use roster from teams response if available
+        let roster = team.roster || [];
+        
+        console.log('[DEBUG] Roster from team object:', roster ? roster.length : 0, 'players');
+        
+        // If no roster in team object, fetch it separately
+        if (!roster || roster.length === 0) {
+            console.log('[DEBUG] Fetching roster separately for:', team.team_key);
+            const response = await fetch(`/yahoo/team/${team.team_key}/roster`);
+            const data = await response.json();
+            roster = data.roster || [];
+            console.log('[DEBUG] Fetched roster:', roster.length, 'players');
+        }
+        
+        console.log('[DEBUG] Saving to: /api/save-yahoo-my-team');
+        console.log('[DEBUG] Team name:', team.name);
+        console.log('[DEBUG] Team key:', team.team_key);
+        console.log('[DEBUG] League key:', leagueKey);
+        console.log('[DEBUG] Logo URL:', team.logo_url);
+        console.log('[DEBUG] Players count:', roster.length);
+        
+        // Allow saving even with empty roster
+        const playerNames = roster.length > 0 ? roster.map(p => p.player_name || p.name) : [];
+        
+        await fetch('/api/save-yahoo-my-team', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                team: playerNames,
+                team_name: team.name,
+                team_key: team.team_key,
+                league_key: leagueKey,
+                logo_url: team.logo_url || team.team_logo_url || '',
+                is_manual: false
+            })
+        });
+        
+        console.log('[DEBUG] Team saved, reloading page...');
+        
+        // Show info message if roster is empty
+        if (roster.length === 0) {
+            console.log('[INFO] Team has no players (pre-draft)');
+        }
+        
+        window.location.reload();
+    } catch (error) {
+        console.error('[ERROR] Error loading team:', error);
+        alert('Failed to load team. Please try again.');
+    }
+}
+
+function filterRecommendations(type) {
+    const cards = document.querySelectorAll('.recommendation-card');
+    const buttons = document.querySelectorAll('.btn-group .btn');
+    
+    // Update button states
+    buttons.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Show/hide cards based on type
+    cards.forEach(card => {
+        const cardType = card.dataset.type;
+        const swapType = card.dataset.swapType;
+        
+        let shouldShow = false;
+        
+        if (type === 'all') {
+            shouldShow = true;
+        } else if (type === 'single_swap') {
+            // Free Agents: 1-for-1 swaps and value-play
+            shouldShow = (swapType === '1-for-1' || swapType === 'value-play');
+        } else if (type === 'trade') {
+            // Trades: all trade recommendations (1-for-1, 2-for-2, 3-for-3, 4-for-4)
+            shouldShow = (
+                cardType === 'trade' || 
+                swapType === 'trade-1-for-1' || 
+                swapType === 'trade-2-for-2' || 
+                swapType === 'trade-3-for-3' || 
+                swapType === 'trade-4-for-4'
+            );
+        } else if (type === 'multi_swap') {
+            // Multi-player swaps: 2-for-2, 3-for-3, etc.
+            shouldShow = (swapType && swapType.includes('-for-'));
+        } else {
+            shouldShow = (cardType === type);
+        }
+        
+        card.style.display = shouldShow ? '' : 'none';
+    });
+}
+
+function getMoreDetails(type) {
+    // Show detailed analysis modal
+    alert('This feature would show detailed category-by-category impact analysis.');
+}
+
+function refreshRecommendations() {
+    const btn = event.target;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+    btn.disabled = true;
+    
+    setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+        window.location.reload();
+    }, 2000);
+}
+
+// Yahoo Recommendations Import Functions
+async function loadYahooLeaguesForRecommend() {
+    const modalBody = document.querySelector('#yahooRecommendModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading Yahoo leagues...</p></div>';
+    
+    try {
+        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const data = await response.json();
+        
+        if (data.success && data.leagues && data.leagues.length > 0) {
+            let html = '<div class="list-group">';
+            data.leagues.forEach(league => {
+                html += `
+                    <a href="javascript:void(0)" class="list-group-item list-group-item-action" onclick="selectYahooLeagueForRecommend('${league.league_key}', '${league.name}')">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">${league.name}</h5>
+                            <small class="text-muted">${league.season}</small>
+                        </div>
+                        <p class="mb-1"><i class="bi bi-people"></i> ${league.num_teams || 0} Teams</p>
+                    </a>
+                `;
+            });
+            html += '</div>';
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">You are not a member of any Yahoo league.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading Yahoo leagues:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while loading leagues.</div>';
+    }
+}
+
+async function selectYahooLeagueForRecommend(leagueKey, leagueName) {
+    const modalBody = document.querySelector('#yahooRecommendModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading teams...</p></div>';
+    
+    try {
+        const response = await fetch(`/yahoo/league/${leagueKey}/teams?include_roster=true`);
+        const data = await response.json();
+        
+        if (data.teams && data.teams.length > 0) {
+            let html = `
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-secondary" onclick="loadYahooLeaguesForRecommend()">
+                        <i class="bi bi-arrow-left"></i> Back to Leagues
+                    </button>
+                </div>
+                <h5 class="mb-3">${leagueName} - Select Your Team</h5>
+                <div class="list-group">
+            `;
+            
+            data.teams.forEach(team => {
+                const logo = team.logo_url || 'https://via.placeholder.com/50';
+                const rosterCount = team.roster ? team.roster.length : 0;
+                
+                html += `
+                    <a href="javascript:void(0)" class="list-group-item list-group-item-action" onclick="importYahooTeamForRecommend('${team.team_key}', '${team.name}')">
+                        <div class="d-flex align-items-center">
+                            <img src="${logo}" alt="${team.name}" class="rounded me-3" style="width: 50px; height: 50px; object-fit: cover;">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-0">${team.name}</h6>
+                                <small class="text-muted">
+                                    <i class="bi bi-person"></i> ${team.managers ? team.managers.join(', ') : 'Unknown'}
+                                    | <i class="bi bi-people"></i> ${rosterCount} Players
+                                </small>
+                            </div>
+                        </div>
+                    </a>
+                `;
+            });
+            
+            html += '</div>';
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">No teams found in this league.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading teams:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while loading teams.</div>';
+    }
+}
+
+async function importYahooTeamForRecommend(teamKey, teamName) {
+    const modalBody = document.querySelector('#yahooRecommendModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-success" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Importing roster...</p></div>';
+    
+    try {
+        const response = await fetch(`/yahoo/team/${teamKey}/roster`);
+        const data = await response.json();
+        
+        if (data.roster && data.roster.length > 0) {
+            // Save to Yahoo My Team (not demo mode team)
+            const saveResponse = await fetch('/api/save-yahoo-my-team', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    team: data.roster.map(p => p.name)
+                })
+            });
+            
+            if (saveResponse.ok) {
+                modalBody.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle"></i> <strong>Success!</strong><br>
+                        ${data.roster.length} players loaded from "<strong>${teamName}</strong>" roster.
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-primary" onclick="location.reload()">Refresh Page and View Recommendations</button>
+                    </div>
+                `;
+            } else {
+                throw new Error('Could not save roster');
+            }
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">No players found in this team.</div>';
+        }
+    } catch (error) {
+        console.error('Error importing team:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while importing roster.</div>';
+    }
+}
+
+// Player Comparison Variables
+let leftPlayers = [];
+let rightPlayers = [];
+let allAvailablePlayers = [];
+
+// Load all available players for comparison
+async function loadAvailablePlayersForComparison() {
+    try {
+        const response = await fetch('/api/players?season=2024-25');
+        const data = await response.json();
+        if (data.players) {
+            allAvailablePlayers = data.players;
+            console.log(`✅ Loaded ${allAvailablePlayers.length} players for comparison`);
+        }
+    } catch (error) {
+        console.error('[ERROR] Failed to load players:', error);
+    }
+}
+
+// Search players for left/right side
+function searchPlayers(query, side) {
+    const resultsDiv = document.getElementById(side === 'left' ? 'leftPlayerSearchResults' : 'rightPlayerSearchResults');
+    
+    if (query.length < 2) {
+        resultsDiv.innerHTML = '';
+        return;
+    }
+    
+    const filtered = allAvailablePlayers.filter(p => 
+        p.name.toLowerCase().includes(query.toLowerCase())
+    ).slice(0, 10);
+    
+    if (filtered.length === 0) {
+        resultsDiv.innerHTML = '<div class="list-group-item text-muted">No players found</div>';
+        return;
+    }
+    
+    resultsDiv.innerHTML = filtered.map(player => `
+        <a href="javascript:void(0)" class="list-group-item list-group-item-action" onclick='addPlayerToComparison("${side}", ${JSON.stringify(player).replace(/'/g, "&apos;")})'>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${player.name}</strong><br>
+                    <small class="text-muted">${player.position} - ${player.team}</small>
+                </div>
+                <i class="fas fa-plus-circle text-success"></i>
+            </div>
+        </a>
+    `).join('');
+}
+
+// Add player to left or right comparison list
+function addPlayerToComparison(side, player) {
+    if (!player) return;
+    
+    const targetList = side === 'left' ? leftPlayers : rightPlayers;
+    
+    // Check if player already added
+    if (targetList.some(p => p.id === player.id)) {
+        alert('This player is already added!');
+        return;
+    }
+    
+    targetList.push(player);
+    updatePlayersList(side);
+    
+    // Clear search
+    const searchInput = document.getElementById(side === 'left' ? 'leftPlayerSearch' : 'rightPlayerSearch');
+    const resultsDiv = document.getElementById(side === 'left' ? 'leftPlayerSearchResults' : 'rightPlayerSearchResults');
+    searchInput.value = '';
+    resultsDiv.innerHTML = '';
+}
+
+// Remove player from comparison list
+function removePlayerFromComparison(side, playerId) {
+    console.log('[DEBUG] Removing player:', side, playerId, 'type:', typeof playerId);
+    console.log('[DEBUG] Before:', side === 'left' ? leftPlayers.length : rightPlayers.length);
+    
+    if (side === 'left') {
+        leftPlayers = leftPlayers.filter(p => p.id != playerId); // Use != for loose comparison
+    } else {
+        rightPlayers = rightPlayers.filter(p => p.id != playerId); // Use != for loose comparison
+    }
+    
+    console.log('[DEBUG] After:', side === 'left' ? leftPlayers.length : rightPlayers.length);
+    updatePlayersList(side);
+}
+
+// Update the players list display
+function updatePlayersList(side) {
+    const targetList = side === 'left' ? leftPlayers : rightPlayers;
+    const listDiv = document.getElementById(side === 'left' ? 'leftPlayersList' : 'rightPlayersList');
+    
+    if (targetList.length === 0) {
+        listDiv.innerHTML = '<p class="text-muted text-center py-3">No players selected</p>';
+        return;
+    }
+    
+    listDiv.innerHTML = targetList.map(player => `
+        <div class="d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light">
+            <div>
+                <strong>${player.name}</strong><br>
+                <small class="text-muted">${player.position} - ${player.team}</small>
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="removePlayerFromComparison('${side}', ${player.id})" type="button">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Compare the two groups of players
+function comparePlayerGroups() {
+    if (leftPlayers.length === 0 || rightPlayers.length === 0) {
+        alert('Please select at least one player on each side!');
+        return;
+    }
+    
+    // Calculate totals for each side
+    const leftTotals = calculateGroupTotals(leftPlayers);
+    const rightTotals = calculateGroupTotals(rightPlayers);
+    
+    // Categories to compare
+    const categories = [
+        { key: 'points', label: 'PTS', higherIsBetter: true },
+        { key: 'rebounds', label: 'REB', higherIsBetter: true },
+        { key: 'assists', label: 'AST', higherIsBetter: true },
+        { key: 'steals', label: 'STL', higherIsBetter: true },
+        { key: 'blocks', label: 'BLK', higherIsBetter: true },
+        { key: 'three_pointers_made', label: '3PM', higherIsBetter: true },
+        { key: 'fg_percentage', label: 'FG%', higherIsBetter: true, isPercentage: true },
+        { key: 'ft_percentage', label: 'FT%', higherIsBetter: true, isPercentage: true },
+        { key: 'turnovers', label: 'TO', higherIsBetter: false }
+    ];
+    
+    let teamAWins = 0;
+    let teamBWins = 0;
+    
+    const tableHtml = categories.map(cat => {
+        const leftVal = leftTotals[cat.key];
+        const rightVal = rightTotals[cat.key];
+        const diff = leftVal - rightVal;
+        
+        let winner = '';
+        let rowClass = '';
+        
+        if (cat.higherIsBetter) {
+            if (leftVal > rightVal) {
+                winner = 'Team A';
+                rowClass = 'table-primary';
+                teamAWins++;
+            } else if (rightVal > leftVal) {
+                winner = 'Team B';
+                rowClass = 'table-success';
+                teamBWins++;
+            } else {
+                winner = 'Tie';
+                rowClass = 'table-secondary';
+            }
+        } else {
+            // For turnovers, lower is better
+            if (leftVal < rightVal) {
+                winner = 'Team A';
+                rowClass = 'table-primary';
+                teamAWins++;
+            } else if (rightVal < leftVal) {
+                winner = 'Team B';
+                rowClass = 'table-success';
+                teamBWins++;
+            } else {
+                winner = 'Tie';
+                rowClass = 'table-secondary';
+            }
+        }
+        
+        const displayLeft = cat.isPercentage ? `${leftVal.toFixed(1)}%` : leftVal.toFixed(1);
+        const displayRight = cat.isPercentage ? `${rightVal.toFixed(1)}%` : rightVal.toFixed(1);
+        const displayDiff = cat.isPercentage ? `${Math.abs(diff).toFixed(1)}%` : Math.abs(diff).toFixed(1);
+        const diffSign = diff > 0 ? '+' : (diff < 0 ? '-' : '');
+        
+        return `
+            <tr class="${rowClass}">
+                <td><strong>${cat.label}</strong></td>
+                <td class="text-center">${displayLeft}</td>
+                <td class="text-center">${diffSign}${displayDiff}</td>
+                <td class="text-center">${displayRight}</td>
+                <td class="text-center"><strong>${winner}</strong></td>
+            </tr>
+        `;
+    }).join('');
+    
+    document.getElementById('comparisonTable').innerHTML = tableHtml;
+    document.getElementById('teamAWins').textContent = teamAWins;
+    document.getElementById('teamBWins').textContent = teamBWins;
+    document.getElementById('comparisonResults').style.display = 'block';
+}
+
+// Calculate totals for a group of players
+function calculateGroupTotals(players) {
+    console.log('[DEBUG] Calculating totals for players:', players);
+    
+    const totals = {
+        points: 0,
+        rebounds: 0,
+        assists: 0,
+        steals: 0,
+        blocks: 0,
+        three_pointers_made: 0,
+        field_goals: 0,
+        field_goal_attempts: 0,
+        free_throws: 0,
+        free_throw_attempts: 0,
+        turnovers: 0
+    };
+    
+    players.forEach(player => {
+        console.log('[DEBUG] Processing player:', player.name, player);
+        
+        // Handle both direct properties and nested stats object
+        const stats = player.stats || player;
+        
+        totals.points += parseFloat(stats.points || player.points || 0);
+        totals.rebounds += parseFloat(stats.rebounds || player.rebounds || 0);
+        totals.assists += parseFloat(stats.assists || player.assists || 0);
+        totals.steals += parseFloat(stats.steals || player.steals || 0);
+        totals.blocks += parseFloat(stats.blocks || player.blocks || 0);
+        totals.three_pointers_made += parseFloat(stats.three_pointers_made || player.three_pointers_made || 0);
+        totals.field_goals += parseFloat(stats.field_goals || player.field_goals || 0);
+        totals.field_goal_attempts += parseFloat(stats.field_goal_attempts || player.field_goal_attempts || 0);
+        totals.free_throws += parseFloat(stats.free_throws || player.free_throws || 0);
+        totals.free_throw_attempts += parseFloat(stats.free_throw_attempts || player.free_throw_attempts || 0);
+        totals.turnovers += parseFloat(stats.turnovers || player.turnovers || 0);
+    });
+    
+    console.log('[DEBUG] Calculated totals:', totals);
+    
+    // Calculate percentages
+    totals.fg_percentage = totals.field_goal_attempts > 0 
+        ? (totals.field_goals / totals.field_goal_attempts * 100) 
+        : 0;
+    totals.ft_percentage = totals.free_throw_attempts > 0 
+        ? (totals.free_throws / totals.free_throw_attempts * 100) 
+        : 0;
+    
+    console.log('[DEBUG] With percentages:', totals);
+    
+    return totals;
+}
+
+// Clear comparison
+function clearComparison() {
+    leftPlayers = [];
+    rightPlayers = [];
+    updatePlayersList('left');
+    updatePlayersList('right');
+    document.getElementById('comparisonResults').style.display = 'none';
+    document.getElementById('leftPlayerSearch').value = '';
+    document.getElementById('rightPlayerSearch').value = '';
+    document.getElementById('leftPlayerSearchResults').innerHTML = '';
+    document.getElementById('rightPlayerSearchResults').innerHTML = '';
+}
+
+// Initialize modal and load teams
+document.addEventListener('DOMContentLoaded', function() {
+    const yahooRecommendModal = document.getElementById('yahooRecommendModal');
+    if (yahooRecommendModal) {
+        yahooRecommendModal.addEventListener('show.bs.modal', loadYahooLeaguesForRecommend);
+    }
+    
+    // Initialize comparison modal
+    const compareModal = document.getElementById('comparePlayersModal');
+    if (compareModal) {
+        compareModal.addEventListener('show.bs.modal', function() {
+            if (allAvailablePlayers.length === 0) {
+                loadAvailablePlayersForComparison();
+            }
+        });
+    }
+    
+    // Add search event listeners
+    const leftSearch = document.getElementById('leftPlayerSearch');
+    const rightSearch = document.getElementById('rightPlayerSearch');
+    
+    if (leftSearch) {
+        leftSearch.addEventListener('input', function(e) {
+            searchPlayers(e.target.value, 'left');
+        });
+    }
+    
+    if (rightSearch) {
+        rightSearch.addEventListener('input', function(e) {
+            searchPlayers(e.target.value, 'right');
+        });
+    }
+    
+    // Load teams for dropdown
+    loadYahooTeamsForRecommendations();
+});
+</script>
+
+<!-- Yahoo Recommendations Import Modal -->
+<div class="modal fade" id="yahooRecommendModal" tabindex="-1" aria-labelledby="yahooRecommendModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="yahooRecommendModalLabel">
+                    <i class="fab fa-yahoo"></i> Load Roster from Yahoo Fantasy
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Compare Players Modal -->
+<div class="modal fade" id="comparePlayersModal" tabindex="-1" aria-labelledby="comparePlayersModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="comparePlayersModalLabel">
+                    <i class="fas fa-balance-scale"></i> Compare Multiple Players
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- Left Side Players -->
+                    <div class="col-md-5">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0"><i class="fas fa-user-friends"></i> Team A</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Search & Add Players:</label>
+                                    <input type="text" class="form-control form-control-sm" id="leftPlayerSearch" placeholder="Type player name...">
+                                    <div id="leftPlayerSearchResults" class="list-group mt-2" style="max-height: 200px; overflow-y: auto;"></div>
+                                </div>
+                                <div class="border rounded p-2" style="min-height: 200px; max-height: 400px; overflow-y: auto;">
+                                    <div id="leftPlayersList">
+                                        <p class="text-muted text-center py-3">No players selected</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Center - Compare Button & Results -->
+                    <div class="col-md-2 text-center d-flex flex-column justify-content-center">
+                        <button class="btn btn-success btn-lg mb-3" onclick="comparePlayerGroups()">
+                            <i class="fas fa-balance-scale"></i><br>
+                            <small>Compare</small>
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="clearComparison()">
+                            <i class="fas fa-redo"></i> Reset
+                        </button>
+                    </div>
+                    
+                    <!-- Right Side Players -->
+                    <div class="col-md-5">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0"><i class="fas fa-user-friends"></i> Team B</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Search & Add Players:</label>
+                                    <input type="text" class="form-control form-control-sm" id="rightPlayerSearch" placeholder="Type player name...">
+                                    <div id="rightPlayerSearchResults" class="list-group mt-2" style="max-height: 200px; overflow-y: auto;"></div>
+                                </div>
+                                <div class="border rounded p-2" style="min-height: 200px; max-height: 400px; overflow-y: auto;">
+                                    <div id="rightPlayersList">
+                                        <p class="text-muted text-center py-3">No players selected</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Comparison Results -->
+                <div id="comparisonResults" class="mt-4" style="display: none;">
+                    <hr>
+                    <h5 class="text-center mb-3"><i class="fas fa-chart-bar"></i> Comparison Results</h5>
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Category</th>
+                                            <th class="text-center bg-primary">Team A Total</th>
+                                            <th class="text-center">Difference</th>
+                                            <th class="text-center bg-success">Team B Total</th>
+                                            <th class="text-center">Winner</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="comparisonTable">
+                                        <!-- Results will be inserted here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <div class="card border-primary">
+                                <div class="card-body text-center">
+                                    <h4 class="mb-0" id="teamAWins">0</h4>
+                                    <small class="text-muted">Team A Wins</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <h4 class="mb-0" id="teamBWins">0</h4>
+                                    <small class="text-muted">Team B Wins</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

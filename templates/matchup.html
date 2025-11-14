@@ -1,0 +1,1995 @@
+{% extends "base.html" %}
+
+{% block title %}Matchup Simulator - Yahoo NBA Fantasy Assistant{% endblock %}
+
+{% block content %}
+
+
+<div class="row">
+    <div class="col-12">
+        <h1><i class="fas fa-vs"></i> Matchup Simulator
+            <span class="badge bg-info" style="font-size: 0.5em;">{{ season }} Season</span>
+        </h1>
+        <p class="lead text-muted">Monte Carlo simulation analysis for your weekly matchup</p>
+        <hr>
+    </div>
+</div>
+
+<!-- Team Selection Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-users"></i> Select Teams for Matchup</h5>
+            </div>
+            <div class="card-body">
+                {% if not session.yahoo_authenticated %}
+                <div class="alert alert-info mb-0">
+                    <i class="fab fa-yahoo"></i> 
+                    <strong>Connect Yahoo to select teams from your league!</strong>
+                    <a href="{{ url_for('yahoo.yahoo_login') }}" class="btn btn-warning btn-sm ms-2">
+                        <i class="fab fa-yahoo"></i> Connect Yahoo
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if simulation and my_roster and my_roster|length > 0 %}
+<!-- End Yahoo Matchup Stats -->
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Win Probability</h5>
+                <div class="{% if simulation.win_probability >= 60 %}win-prob-high{% elif simulation.win_probability >= 40 %}win-prob-medium{% else %}win-prob-low{% endif %}">
+                    {{ simulation.win_probability }}%
+                </div>
+                <p class="text-muted">{{ "{:,}".format(10000) }} simulations</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Category Score (9 Categories)</h5>
+                <div class="display-4 fw-bold" style="color: #0d6efd;">
+                    <span class="{% if simulation.expected_categories_won > simulation.expected_categories_lost %}text-success{% elif simulation.expected_categories_won < simulation.expected_categories_lost %}text-danger{% else %}text-warning{% endif %}">
+                        {{ simulation.expected_categories_won }}
+                    </span>
+                    <span class="text-muted"> - </span>
+                    <span class="text-secondary">{{ simulation.expected_categories_lost }}</span>
+                </div>
+                <p class="text-muted small mt-2">
+                    <i class="fas fa-trophy"></i> Categories Won - Categories Lost
+                    {% if simulation.expected_categories_tied > 0 %}
+                    <br><span class="badge bg-warning text-dark">{{ simulation.expected_categories_tied }} Tied</span>
+                    {% endif %}
+                </p>
+                <small class="text-info">
+                    <i class="fas fa-info-circle"></i> 
+                    PTS, REB, AST, STL, BLK, 3PM, FG%, FT%, TO
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar"></i> 9 Category Detailed Analysis</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Category</th>
+                                <th class="text-center">My Team</th>
+                                <th class="text-center">Opponent</th>
+                                <th class="text-center">Win Probability</th>
+                                <th class="text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set stat_names = {
+                                'points': 'Points (PTS)',
+                                'rebounds': 'Rebounds (REB)',
+                                'assists': 'Assists (AST)',
+                                'steals': 'Steals (STL)',
+                                'blocks': 'Blocks (BLK)',
+                                'three_pointers_made': '3-Pointers (3PM)',
+                                'fg_percentage': 'Field Goal % (FG%)',
+                                'ft_percentage': 'Free Throw % (FT%)',
+                                'turnovers': 'Turnovers (TO)'
+                            } %}
+                            
+                            {% set yahoo_stat_ids = {
+                                'points': '12',
+                                'rebounds': '15',
+                                'assists': '16',
+                                'steals': '17',
+                                'blocks': '18',
+                                'three_pointers_made': '10',
+                                'fg_percentage': '5',
+                                'ft_percentage': '8',
+                                'turnovers': '19'
+                            } %}
+                            
+                            {% for category in ['points', 'rebounds', 'assists', 'steals', 'blocks', 'three_pointers_made', 'fg_percentage', 'ft_percentage', 'turnovers'] %}
+                            {% if category in simulation.category_breakdown %}
+                            {% set data = simulation.category_breakdown[category] %}
+                            
+                            {# Use Yahoo stats if available, otherwise use projections #}
+                            {% if yahoo_my_team_stats and yahoo_stat_ids[category] in yahoo_my_team_stats %}
+                                {% set my_val = yahoo_my_team_stats[yahoo_stat_ids[category]]|float %}
+                            {% else %}
+                                {% set my_val = simulation.my_team_projections[category] %}
+                            {% endif %}
+                            
+                            {% if yahoo_opponent_team_stats and yahoo_stat_ids[category] in yahoo_opponent_team_stats %}
+                                {% set opp_val = yahoo_opponent_team_stats[yahoo_stat_ids[category]]|float %}
+                            {% else %}
+                                {% set opp_val = simulation.opponent_projections[category] %}
+                            {% endif %}
+                            
+                            <tr>
+                                <td><strong>{{ stat_names[category] }}</strong></td>
+                                <td class="text-center">
+                                    {% if category in ['fg_percentage', 'ft_percentage'] %}
+                                        <strong>{{ (my_val * 100)|round(1) }}%</strong>
+                                    {% else %}
+                                        <strong>{{ my_val|round(1) }}</strong>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if category in ['fg_percentage', 'ft_percentage'] %}
+                                        <strong>{{ (opp_val * 100)|round(1) }}%</strong>
+                                    {% else %}
+                                        <strong>{{ opp_val|round(1) }}</strong>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <div class="progress" style="height: 25px;">
+                                        <div class="progress-bar bg-{% if data.strength == 'strong' %}success{% elif data.strength == 'weak' %}danger{% else %}warning{% endif %}" 
+                                             style="width: {{ data.win_pct }}%">
+                                            {{ data.win_pct }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    {% if data.strength == 'strong' %}
+                                        <span class="badge bg-success"><i class="fas fa-check-circle"></i> Strong</span>
+                                    {% elif data.strength == 'weak' %}
+                                        <span class="badge bg-danger"><i class="fas fa-times-circle"></i> Weak</span>
+                                    {% else %}
+                                        <span class="badge bg-warning"><i class="fas fa-minus-circle"></i> Balanced</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 d-flex align-items-center">
+                        {% if session.yahoo_my_team_logo %}
+                        <img src="{{ session.yahoo_my_team_logo }}" alt="Logo" class="me-2" style="width: 32px; height: 32px; border-radius: 4px;">
+                        {% else %}
+                        <i class="fas fa-user me-2"></i>
+                        {% endif %}
+                        <span class="dropdown">
+                            <button class="btn btn-link text-white text-decoration-none p-0 dropdown-toggle" type="button" id="myTeamDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: inherit; font-weight: inherit;">
+                                {% if session.yahoo_my_team_name %}
+                                {{ session.yahoo_my_team_name }}
+                                {% else %}
+                                My Team
+                                {% endif %}
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="myTeamDropdown" id="myTeamDropdownMenu">
+                                <li><h6 class="dropdown-header">Select from Yahoo League</h6></li>
+                            </ul>
+                        </span>
+                    </h5>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if my_roster and my_roster|length > 0 %}
+                    {% for player in my_roster %}
+                    <div class="player-card">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>{{ player.name }}</strong>
+                                <br>
+                                <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
+                                {% if yahoo_my_team_stats %}
+                                <br>
+                                <small class="text-success">
+                                    <i class="fab fa-yahoo"></i> Yahoo Week {{ yahoo_current_week or '?' }} Stats
+                                </small>
+                                {% endif %}
+                            </div>
+                            <div class="text-end">
+                                <small>
+                                    <span class="badge bg-info">{{ player.stats.points|default(0)|round(1) }} PPG</span>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-users-slash fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No Players Loaded</h5>
+                        <p class="text-muted small">Select a team from the dropdown above</p>
+                    </div>
+                {% endif %}
+                
+                {% if simulation and simulation.my_team_projections %}
+                <hr>
+                <h6>
+                    {% if yahoo_my_team_stats %}
+                    <i class="fab fa-yahoo text-warning"></i> Yahoo Actual Stats (Week {{ yahoo_current_week or '?' }})
+                    {% else %}
+                    Team Totals (Weekly Projection)
+                    {% endif %}
+                </h6>
+                <div class="row text-center small">
+                    {% if yahoo_my_team_stats %}
+                    {% set team_stats = yahoo_my_team_stats %}
+                    <!-- DEBUG: My team Yahoo stats active -->
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ team_stats.get('12', '0') }}</strong>
+                            <br><small>PTS</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ team_stats.get('15', '0') }}</strong>
+                            <br><small>REB</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ team_stats.get('16', '0') }}</strong>
+                            <br><small>AST</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ team_stats.get('17', '0') }}</strong>
+                            <br><small>STL</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ team_stats.get('18', '0') }}</strong>
+                            <br><small>BLK</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ team_stats.get('10', '0') }}</strong>
+                            <br><small>3PM</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ (team_stats.get('5', '0')|float * 100)|round(1) if team_stats.get('5') else '0' }}%</strong>
+                            <br><small>FG%</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ (team_stats.get('8', '0')|float * 100)|round(1) if team_stats.get('8') else '0' }}%</strong>
+                            <br><small>FT%</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2 bg-light">
+                            <strong>{{ team_stats.get('19', '0') }}</strong>
+                            <br><small>TO</small>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.points) }}</strong>
+                            <br><small>PTS</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.rebounds) }}</strong>
+                            <br><small>REB</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.assists) }}</strong>
+                            <br><small>AST</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.steals) }}</strong>
+                            <br><small>STL</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.blocks) }}</strong>
+                            <br><small>BLK</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.three_pointers_made) }}</strong>
+                            <br><small>3PM</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.fg_percentage * 100) }}%</strong>
+                            <br><small>FG%</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.ft_percentage * 100) }}%</strong>
+                            <br><small>FT%</small>
+                        </div>
+                    </div>
+                    <div class="col-4 col-md-3 mb-2">
+                        <div class="border p-2">
+                            <strong>{{ "%.1f"|format(simulation.my_team_projections.turnovers) }}</strong>
+                            <br><small>TO</small>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 d-flex align-items-center">
+                        {% if session.yahoo_opponent_team_logo and not session.yahoo_opponent_is_manual %}
+                        <img src="{{ session.yahoo_opponent_team_logo }}" alt="Logo" class="me-2" style="width: 32px; height: 32px; border-radius: 4px;">
+                        {% else %}
+                        <i class="fas fa-user-friends me-2"></i>
+                        {% endif %}
+                        <span class="dropdown">
+                            <button class="btn btn-link text-white text-decoration-none p-0 dropdown-toggle" type="button" id="opponentTeamDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: inherit; font-weight: inherit;">
+                                {% if session.yahoo_opponent_is_manual %}
+                                Opponent Team
+                                {% elif session.yahoo_opponent_team_name %}
+                                {{ session.yahoo_opponent_team_name }}
+                                {% else %}
+                                Opponent Team
+                                {% endif %}
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="opponentTeamDropdown" id="opponentTeamDropdownMenu">
+                                <li><h6 class="dropdown-header">Select from Yahoo League</h6></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#selectOpponentModal"><i class="fas fa-hand-pointer"></i> Manual Selection</a></li>
+                            </ul>
+                        </span>
+                    </h5>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if opponent_roster and opponent_roster|length > 0 %}
+                    {% for player in opponent_roster %}
+                    <div class="player-card">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>{{ player.name }}</strong>
+                                <br>
+                                <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
+                                {% if yahoo_opponent_team_stats %}
+                                <br>
+                                <small class="text-success">
+                                    <i class="fab fa-yahoo"></i> Yahoo Week {{ yahoo_current_week or '?' }} Stats
+                                </small>
+                                {% endif %}
+                            </div>
+                            <div class="text-end">
+                                <small>
+                                    <span class="badge bg-info">{{ player.stats.points|default(0)|round(1) }} PPG</span>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    
+                    {% if simulation and simulation.opponent_projections %}
+                    <hr>
+                    <h6>
+                        {% if yahoo_opponent_team_stats %}
+                        <i class="fab fa-yahoo text-warning"></i> Yahoo Actual Stats (Week {{ yahoo_current_week or '?' }})
+                        {% else %}
+                        Team Totals (Weekly Projection)
+                        {% endif %}
+                    </h6>
+                    <div class="row text-center small">
+                        {% if yahoo_opponent_team_stats %}
+                        {% set team_stats = yahoo_opponent_team_stats %}
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ team_stats.get('12', '0') }}</strong>
+                                <br><small>PTS</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ team_stats.get('15', '0') }}</strong>
+                                <br><small>REB</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ team_stats.get('16', '0') }}</strong>
+                                <br><small>AST</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ team_stats.get('17', '0') }}</strong>
+                                <br><small>STL</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ team_stats.get('18', '0') }}</strong>
+                                <br><small>BLK</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ team_stats.get('10', '0') }}</strong>
+                                <br><small>3PM</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ (team_stats.get('5', '0')|float * 100)|round(1) if team_stats.get('5') else '0' }}%</strong>
+                                <br><small>FG%</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ (team_stats.get('8', '0')|float * 100)|round(1) if team_stats.get('8') else '0' }}%</strong>
+                                <br><small>FT%</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2 bg-light">
+                                <strong>{{ team_stats.get('19', '0') }}</strong>
+                                <br><small>TO</small>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.points) }}</strong>
+                                <br><small>PTS</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.rebounds) }}</strong>
+                                <br><small>REB</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.assists) }}</strong>
+                                <br><small>AST</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.steals) }}</strong>
+                                <br><small>STL</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.blocks) }}</strong>
+                                <br><small>BLK</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.three_pointers_made) }}</strong>
+                                <br><small>3PM</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.fg_percentage * 100) }}%</strong>
+                                <br><small>FG%</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.ft_percentage * 100) }}%</strong>
+                                <br><small>FT%</small>
+                            </div>
+                        </div>
+                        <div class="col-4 col-md-3 mb-2">
+                            <div class="border p-2">
+                                <strong>{{ "%.1f"|format(simulation.opponent_projections.turnovers) }}</strong>
+                                <br><small>TO</small>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-users-slash fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No Players Loaded</h5>
+                        <p class="text-muted small">Select a team from the dropdown above or use Manual Selection</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if simulation.recommendations %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-lightbulb"></i> Strategic Recommendations</h5>
+            </div>
+            <div class="card-body">
+                {% for rec in simulation.recommendations %}
+                <div class="alert alert-{% if rec.priority == 'high' %}warning{% else %}info{% endif %}">
+                    <i class="fas fa-{% if rec.type == 'improve_weakness' %}arrow-up{% else %}star{% endif %}"></i>
+                    {{ rec.message }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-cogs"></i> Simulation Controls</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% if opponent_roster and opponent_roster|length > 0 %}
+                    <div class="col-md-4">
+                        <button class="btn btn-primary w-100" onclick="rerunSimulation()">
+                            <i class="fas fa-redo"></i> Rerun Simulation
+                        </button>
+                    </div>
+                    {% endif %}
+                    <div class="col-md-4">
+                        <button class="btn btn-warning w-100" onclick="clearOpponent()">
+                            <i class="fas fa-trash"></i> Clear Opponent
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary w-100">
+                            <i class="fas fa-home"></i> Back to Home
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Opponent Selection Modal -->
+<div class="modal fade" id="selectOpponentModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="w-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="modal-title mb-0">Select Opponent Players (0/10)</h5>
+                        <div class="text-end">
+                            <button class="btn btn-success btn-sm me-2" onclick="selectRandomOpponentInModal()" id="randomOppBtn">
+                                <i class="fas fa-random"></i> Generate Random
+                            </button>
+                            <div class="badge bg-danger text-white fs-6" id="oppCreditDisplay">
+                                <i class="fas fa-coins"></i> Credit: <span id="oppCurrentCredit">0</span>/200
+                            </div>
+                            <div>
+                                <small class="text-muted">Remaining: <span id="oppRemainingCredit" class="text-success fw-bold">200</span></small>
+                            </div>
+                        </div>
+                    </div>
+                    <small class="text-muted" id="oppPositionRequirement">
+                        Roster Positions: 
+                        <span id="oppPgSlotStatus" class="badge bg-secondary">PG</span>
+                        <span id="oppSgSlotStatus" class="badge bg-secondary">SG</span>
+                        <span id="oppGSlotStatus" class="badge bg-secondary">G</span>
+                        <span id="oppSfSlotStatus" class="badge bg-secondary">SF</span>
+                        <span id="oppPfSlotStatus" class="badge bg-secondary">PF</span>
+                        <span id="oppFSlotStatus" class="badge bg-secondary">F</span>
+                        <span id="oppC1SlotStatus" class="badge bg-secondary">C</span>
+                        <span id="oppC2SlotStatus" class="badge bg-secondary">C</span>
+                        <span id="oppUtil1SlotStatus" class="badge bg-secondary">UTIL</span>
+                        <span id="oppUtil2SlotStatus" class="badge bg-secondary">UTIL</span>
+                    </small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Filters -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <input type="text" id="opponentSearch" class="form-control form-control-sm" placeholder="🔍 Search player...">
+                    </div>
+                    <div class="col-md-2">
+                        <select id="oppPositionFilter" class="form-select form-select-sm">
+                            <option value="">All Positions</option>
+                            <option value="PG">Point Guard (PG)</option>
+                            <option value="SG">Shooting Guard (SG)</option>
+                            <option value="G">Guard (G - PG/SG)</option>
+                            <option value="SF">Small Forward (SF)</option>
+                            <option value="PF">Power Forward (PF)</option>
+                            <option value="F">Forward (F - SF/PF)</option>
+                            <option value="C">Center (C)</option>
+                            <option value="UTIL">Utility (UTIL - Anyone)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select id="oppTeamFilter" class="form-select form-select-sm">
+                            <option value="">All Teams</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select id="oppSortBy" class="form-select form-select-sm">
+                            <option value="credit">💰 Credit</option>
+                            <option value="points">Points (PTS)</option>
+                            <option value="rebounds">Rebounds (REB)</option>
+                            <option value="assists">Assists (AST)</option>
+                            <option value="steals">Steals (ST)</option>
+                            <option value="blocks">Blocks (BLK)</option>
+                            <option value="threes">3-Pointers (3PM)</option>
+                            <option value="fg_percentage">FG%</option>
+                            <option value="ft_percentage">FT%</option>
+                            <option value="turnovers">Turnovers (TO)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="resetOppFilters()">
+                            <i class="fas fa-redo"></i> Reset Filters
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover table-sm">
+                        <thead class="sticky-top bg-white">
+                            <tr>
+                                <th>Name</th>
+                                <th>Pos</th>
+                                <th>Team</th>
+                                <th>💰</th>
+                                <th>PTS</th>
+                                <th>REB</th>
+                                <th>AST</th>
+                                <th>ST</th>
+                                <th>BLK</th>
+                                <th>3PTM</th>
+                                <th>FG%</th>
+                                <th>FT%</th>
+                                <th>TO</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="opponentTableBody">
+                            {% for player in all_players %}
+                            {% if player.name not in my_roster|map(attribute='name')|list %}
+                            <tr class="opp-player-row" data-player-name="{{ player.name }}"
+                                data-position="{{ player.position }}"
+                                data-team="{{ player.team }}"
+                                data-player-credit="0"
+                                data-points="{{ player.stats.points|default(0)|round(1) }}"
+                                data-rebounds="{{ player.stats.rebounds|default(0)|round(1) }}"
+                                data-assists="{{ player.stats.assists|default(0)|round(1) }}"
+                                data-steals="{{ player.stats.steals|default(0)|round(2) }}"
+                                data-blocks="{{ player.stats.blocks|default(0)|round(2) }}"
+                                data-fg-pct="{{ (player.stats.fg_percentage * 100)|round(1) if player.stats.fg_percentage else 0 }}"
+                                data-ft-pct="{{ (player.stats.ft_percentage * 100)|round(1) if player.stats.ft_percentage else 0 }}"
+                                data-threes="{{ player.stats.three_pointers_made|default(0)|round(1) }}">
+                                <td><strong>{{ player.name }}</strong></td>
+                                <td><span class="badge bg-info">{{ player.position }}</span></td>
+                                <td>{{ player.team }}</td>
+                                <td><span class="badge opp-credit-badge bg-secondary">-</span></td>
+                                <td>{{ player.stats.points|default(0)|round(1) }}</td>
+                                <td>{{ player.stats.rebounds|default(0)|round(1) }}</td>
+                                <td>{{ player.stats.assists|default(0)|round(1) }}</td>
+                                <td>{{ player.stats.steals|default(0)|round(2) }}</td>
+                                <td>{{ player.stats.blocks|default(0)|round(2) }}</td>
+                                <td>{{ player.stats.three_pointers_made|default(0)|round(1) }}</td>
+                                <td>{{ (player.stats.fg_percentage * 100)|round(1) if player.stats.fg_percentage else '-' }}%</td>
+                                <td>{{ (player.stats.ft_percentage * 100)|round(1) if player.stats.ft_percentage else '-' }}%</td>
+                                <td>{{ player.stats.turnovers|default(0)|round(1) }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-success add-opponent-btn" 
+                                            data-player="{{ player.name }}"
+                                            data-position="{{ player.position }}">
+                                        <i class="fas fa-plus"></i> Add
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="me-auto">
+                    <small class="text-danger" id="oppValidationMessage"></small>
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveOpponent()" id="saveOppBtn">
+                    Save and Run Simulation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let opponentTeam = [];
+let opponentRoster = {
+    PG: null, SG: null, G: null, SF: null, PF: null,
+    F: null, C1: null, C2: null, UTIL1: null, UTIL2: null
+};
+let playerRankings = []; // Will store credit values
+const allPlayers = {{ all_players|tojson|safe }};
+
+// Load player credits from rankings API
+function loadOpponentCredits() {
+    fetch('/api/draft/rankings')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                playerRankings = data.rankings;
+                
+                // Update credit badges in table
+                document.querySelectorAll('.opp-player-row').forEach(row => {
+                    const playerName = row.dataset.playerName;
+                    const ranking = playerRankings.find(r => r.name === playerName);
+                    
+                    if (ranking) {
+                        const credit = ranking.credit || 0;
+                        row.dataset.playerCredit = credit;
+                        
+                        const badge = row.querySelector('.opp-credit-badge');
+                        if (badge) {
+                            badge.textContent = credit;
+                            badge.className = 'badge opp-credit-badge';
+                            if (credit >= 50) {
+                                badge.classList.add('bg-danger');
+                            } else if (credit >= 35) {
+                                badge.classList.add('bg-warning', 'text-dark');
+                            } else if (credit >= 20) {
+                                badge.classList.add('bg-info');
+                            } else {
+                                badge.classList.add('bg-success');
+                            }
+                        }
+                    }
+                });
+                
+                updateOppCreditDisplay();
+                console.log('Loaded credits for opponent selection');
+            }
+        })
+        .catch(err => console.error('Error loading credits:', err));
+}
+
+// Update opponent credit display
+function updateOppCreditDisplay() {
+    let totalCredit = 0;
+    
+    opponentTeam.forEach(playerName => {
+        const ranking = playerRankings.find(r => r.name === playerName);
+        if (ranking) {
+            totalCredit += ranking.credit || 0;
+        }
+    });
+    
+    const remainingCredit = 200 - totalCredit;
+    
+    const currentDisplay = document.getElementById('oppCurrentCredit');
+    const remainingDisplay = document.getElementById('oppRemainingCredit');
+    
+    if (currentDisplay) {
+        currentDisplay.textContent = totalCredit;
+    }
+    
+    if (remainingDisplay) {
+        remainingDisplay.textContent = remainingCredit;
+        remainingDisplay.className = remainingCredit >= 50 ? 'text-success fw-bold' : 
+                                     remainingCredit >= 20 ? 'text-warning fw-bold' : 
+                                     'text-danger fw-bold';
+    }
+}
+
+// Assign player to opponent roster slot
+function assignToOpponentSlot(player) {
+    const positions = player.position.split('-');
+    
+    // Try to assign to specific position first
+    for (let pos of positions) {
+        if (pos === 'PG' && !opponentRoster.PG) {
+            opponentRoster.PG = player.name;
+            return;
+        }
+        if (pos === 'SG' && !opponentRoster.SG) {
+            opponentRoster.SG = player.name;
+            return;
+        }
+        if (pos === 'SF' && !opponentRoster.SF) {
+            opponentRoster.SF = player.name;
+            return;
+        }
+        if (pos === 'PF' && !opponentRoster.PF) {
+            opponentRoster.PF = player.name;
+            return;
+        }
+        if (pos === 'C' && !opponentRoster.C1) {
+            opponentRoster.C1 = player.name;
+            return;
+        }
+        if (pos === 'C' && !opponentRoster.C2) {
+            opponentRoster.C2 = player.name;
+            return;
+        }
+    }
+    
+    // Try G slot (PG or SG)
+    if ((positions.includes('PG') || positions.includes('SG')) && !opponentRoster.G) {
+        opponentRoster.G = player.name;
+        return;
+    }
+    
+    // Try F slot (SF or PF)
+    if ((positions.includes('SF') || positions.includes('PF')) && !opponentRoster.F) {
+        opponentRoster.F = player.name;
+        return;
+    }
+    
+    // Try UTIL slots
+    if (!opponentRoster.UTIL1) {
+        opponentRoster.UTIL1 = player.name;
+        return;
+    }
+    if (!opponentRoster.UTIL2) {
+        opponentRoster.UTIL2 = player.name;
+        return;
+    }
+}
+
+// Update opponent roster status badges
+function updateOpponentRosterStatus() {
+    const slotMapping = {
+        'PG': 'oppPgSlotStatus',
+        'SG': 'oppSgSlotStatus',
+        'G': 'oppGSlotStatus',
+        'SF': 'oppSfSlotStatus',
+        'PF': 'oppPfSlotStatus',
+        'F': 'oppFSlotStatus',
+        'C1': 'oppC1SlotStatus',
+        'C2': 'oppC2SlotStatus',
+        'UTIL1': 'oppUtil1SlotStatus',
+        'UTIL2': 'oppUtil2SlotStatus'
+    };
+    
+    Object.keys(slotMapping).forEach(slot => {
+        const badge = document.getElementById(slotMapping[slot]);
+        if (badge) {
+            const isFilled = opponentRoster[slot] !== null;
+            let displayName = slot;
+            if (slot === 'C1' || slot === 'C2') displayName = 'C';
+            if (slot === 'UTIL1' || slot === 'UTIL2') displayName = 'UTIL';
+            
+            badge.textContent = displayName;
+            badge.className = isFilled ? 'badge bg-success' : 'badge bg-secondary';
+        }
+    });
+}
+
+// Initialize team filter
+const uniqueTeams = [...new Set(allPlayers.map(p => p.team))].sort();
+const oppTeamFilter = document.getElementById('oppTeamFilter');
+if (oppTeamFilter) {
+    uniqueTeams.forEach(team => {
+        const option = document.createElement('option');
+        option.value = team;
+        option.textContent = team;
+        oppTeamFilter.appendChild(option);
+    });
+}
+
+// Opponent filters
+document.getElementById('opponentSearch')?.addEventListener('input', applyOppFilters);
+document.getElementById('oppPositionFilter')?.addEventListener('change', applyOppFilters);
+document.getElementById('oppTeamFilter')?.addEventListener('change', applyOppFilters);
+document.getElementById('oppSortBy')?.addEventListener('change', applyOppFilters);
+
+function applyOppFilters() {
+    const searchTerm = document.getElementById('opponentSearch')?.value.toLowerCase() || '';
+    const posFilter = document.getElementById('oppPositionFilter')?.value || '';
+    const teamFilterVal = document.getElementById('oppTeamFilter')?.value || '';
+    const sortBy = document.getElementById('oppSortBy')?.value || 'credit';
+    
+    const rows = Array.from(document.querySelectorAll('#opponentTableBody tr'));
+    
+    // Filter
+    rows.forEach(row => {
+        const playerName = row.dataset.playerName.toLowerCase();
+        const position = row.dataset.position;
+        const team = row.dataset.team;
+        
+        let show = true;
+        
+        if (searchTerm && !playerName.includes(searchTerm)) show = false;
+        
+        // Handle special position filters (same as index.html)
+        if (posFilter) {
+            if (posFilter === 'G') {
+                if (!position.includes('PG') && !position.includes('SG')) show = false;
+            } else if (posFilter === 'F') {
+                if (!position.includes('SF') && !position.includes('PF')) show = false;
+            } else if (posFilter === 'UTIL') {
+                show = true;
+            } else {
+                if (!position.includes(posFilter)) show = false;
+            }
+        }
+        
+        if (teamFilterVal && team !== teamFilterVal) show = false;
+        
+        row.style.display = show ? '' : 'none';
+    });
+    
+    // Sort visible rows
+    const visibleRows = rows.filter(row => row.style.display !== 'none');
+    visibleRows.sort((a, b) => {
+        let aVal, bVal;
+        
+        if (sortBy === 'credit') {
+            aVal = parseFloat(a.dataset.playerCredit || 0);
+            bVal = parseFloat(b.dataset.playerCredit || 0);
+        } else if (sortBy === 'fg_percentage' || sortBy === 'ft_percentage') {
+            const fieldName = sortBy === 'fg_percentage' ? 'fgPct' : 'ftPct';
+            aVal = parseFloat(a.dataset[fieldName] || 0);
+            bVal = parseFloat(b.dataset[fieldName] || 0);
+        } else {
+            aVal = parseFloat(a.dataset[sortBy] || 0);
+            bVal = parseFloat(b.dataset[sortBy] || 0);
+        }
+        
+        // For turnovers, lower is better
+        if (sortBy === 'turnovers') {
+            return aVal - bVal;
+        }
+        
+        // For all other stats, higher is better
+        return bVal - aVal;
+    });
+    
+    const tbody = document.getElementById('opponentTableBody');
+    visibleRows.forEach(row => tbody.appendChild(row));
+}
+
+function resetOppFilters() {
+    document.getElementById('opponentSearch').value = '';
+    document.getElementById('oppPositionFilter').value = '';
+    document.getElementById('oppTeamFilter').value = '';
+    document.getElementById('oppSortBy').value = 'credit';
+    applyOppFilters();
+}
+
+function addToOpponent(playerName, position) {
+    if (opponentTeam.length >= 10) {
+        showOppValidationMessage('Maximum 10 players can be selected!');
+        return;
+    }
+    
+    if (opponentTeam.includes(playerName)) {
+        showOppValidationMessage('This player is already selected!');
+        return;
+    }
+    
+    // Calculate current credit
+    let currentCredit = 0;
+    opponentTeam.forEach(pName => {
+        const ranking = playerRankings.find(r => r.name === pName);
+        if (ranking) {
+            currentCredit += ranking.credit || 0;
+        }
+    });
+    
+    // Get new player's credit
+    const newPlayerRanking = playerRankings.find(r => r.name === playerName);
+    const newPlayerCredit = newPlayerRanking ? (newPlayerRanking.credit || 0) : 0;
+    
+    // Check credit limit
+    if (currentCredit + newPlayerCredit > 200) {
+        showOppValidationMessage(`Credit limit exceeded! Current: ${currentCredit}, To add: ${newPlayerCredit}`);
+        return;
+    }
+    
+    // Add player
+    opponentTeam.push(playerName);
+    const player = allPlayers.find(p => p.name === playerName);
+    if (player) {
+        assignToOpponentSlot(player);
+    }
+    
+    updateOpponentModal();
+    updateOpponentRosterStatus();
+    updateOppCreditDisplay();
+    validateOppTeam();
+}
+
+function removeFromOpponent(playerName) {
+    // Remove from array
+    opponentTeam = opponentTeam.filter(name => name !== playerName);
+    
+    // Remove from roster slots
+    Object.keys(opponentRoster).forEach(slot => {
+        if (opponentRoster[slot] === playerName) {
+            opponentRoster[slot] = null;
+        }
+    });
+    
+    updateOpponentModal();
+    updateOpponentRosterStatus();
+    updateOppCreditDisplay();
+    validateOppTeam();
+}
+
+function validateOppTeam() {
+    const totalSlots = 10;
+    const filledSlots = opponentTeam.length;
+    
+    const saveBtn = document.getElementById('saveOppBtn');
+    const validationMsg = document.getElementById('oppValidationMessage');
+    
+    if (filledSlots < totalSlots) {
+        saveBtn.disabled = true;
+        validationMsg.textContent = `${filledSlots}/10 players selected. Team not complete!`;
+    } else if (filledSlots === totalSlots) {
+        // Check credit is close to 200
+        let totalCredit = 0;
+        opponentTeam.forEach(pName => {
+            const ranking = playerRankings.find(r => r.name === pName);
+            if (ranking) {
+                totalCredit += ranking.credit || 0;
+            }
+        });
+        
+        if (totalCredit < 180) {
+            saveBtn.disabled = true;
+            validationMsg.textContent = `Total credit too low: ${totalCredit}/200. Use at least 180 credits!`;
+        } else {
+            saveBtn.disabled = false;
+            validationMsg.textContent = '';
+        }
+    } else {
+        saveBtn.disabled = true;
+        validationMsg.textContent = 'Maximum 10 players can be selected!';
+    }
+}
+
+function showOppValidationMessage(message) {
+    const validationMsg = document.getElementById('oppValidationMessage');
+    if (validationMsg) {
+        validationMsg.textContent = message;
+        setTimeout(() => {
+            validationMsg.textContent = '';
+        }, 3000);
+    }
+}
+
+function updateOpponentModal() {
+    const modalTitle = document.querySelector('#selectOpponentModal .modal-title');
+    if (modalTitle) {
+        modalTitle.textContent = `Select Opponent Players (${opponentTeam.length}/10)`;
+    }
+    
+    const addButtons = document.querySelectorAll('.add-opponent-btn');
+    addButtons.forEach(btn => {
+        const playerName = btn.dataset.player;
+        if (opponentTeam.includes(playerName)) {
+            // Player already added - show remove button
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-times"></i> Remove';
+            btn.onclick = function(e) {
+                e.preventDefault();
+                removeFromOpponent(playerName);
+            };
+        } else if (opponentTeam.length >= 10) {
+            // Team full
+            btn.classList.remove('btn-success', 'btn-danger');
+            btn.classList.add('btn-secondary');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-ban"></i> Full';
+        } else {
+            // Available to add
+            btn.classList.remove('btn-secondary', 'btn-danger');
+            btn.classList.add('btn-success');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus"></i> Add';
+            const position = btn.dataset.position;
+            btn.onclick = function(e) {
+                e.preventDefault();
+                addToOpponent(playerName, position);
+            };
+        }
+    });
+}
+
+function saveOpponent() {
+    if (opponentTeam.length < 10) {
+        alert(`Team not complete! ${opponentTeam.length}/10 players selected.`);
+        return;
+    }
+    
+    // Calculate total credit
+    let totalCredit = 0;
+    opponentTeam.forEach(playerName => {
+        const ranking = playerRankings.find(r => r.name === playerName);
+        if (ranking) {
+            totalCredit += ranking.credit || 0;
+        }
+    });
+    
+    if (totalCredit < 180) {
+        alert(`Total credit too low: ${totalCredit}/200. Use at least 180 credits!`);
+        return;
+    }
+    
+    if (totalCredit > 200) {
+        alert(`Credit limit exceeded! Total: ${totalCredit}/200`);
+        return;
+    }
+    
+    // Convert player names to match the format expected by matchup page
+    const playerNames = opponentTeam.map(name => name);
+    
+    console.log('[DEBUG] Saving manual opponent team:');
+    console.log('[DEBUG] Player names:', playerNames);
+    console.log('[DEBUG] Total players:', playerNames.length);
+    
+    fetch('/api/save-yahoo-opponent', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+            team: playerNames,
+            team_name: 'Opponent Team',
+            logo_url: '',
+            is_manual: true
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('[DEBUG] Save response:', data);
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Could not save team!');
+    });
+}
+
+function selectRandomOpponentInModal() {
+    const btn = document.getElementById('randomOppBtn');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+    btn.disabled = true;
+    
+    fetch('/api/random-opponent', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Populate the modal with selected players
+            opponentTeam = data.team;
+            
+            // Update modal UI
+            updateOpponentModal();
+            updateOpponentRosterStatus();
+            updateOppCreditDisplay();
+            validateOppTeam();
+            
+            // Show success message
+            const validationMsg = document.getElementById('oppValidationMessage');
+            if (validationMsg) {
+                validationMsg.className = 'text-success';
+                validationMsg.textContent = `Random team created! Total credit: ${data.total_credit}/200`;
+                setTimeout(() => {
+                    validationMsg.className = 'text-danger';
+                    validationMsg.textContent = '';
+                }, 3000);
+            }
+            
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        } else {
+            alert('Error: ' + data.error);
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Could not create random team!');
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+    });
+}
+
+function rerunSimulation() {
+    window.location.reload();
+}
+
+function clearOpponent() {
+    if (confirm('Are you sure you want to clear the opponent team?')) {
+        fetch('/api/save-opponent', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ team: [] })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            }
+        });
+    }
+}
+
+// Load credits when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadOpponentCredits();
+    loadYahooTeamsForDropdowns();
+});
+
+// Load Yahoo teams for dropdowns
+async function loadYahooTeamsForDropdowns() {
+    try {
+        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const data = await response.json();
+        
+        console.log('[DEBUG] Leagues response:', data);
+        
+        if (data.success && data.leagues && data.leagues.length > 0) {
+            // Get first league's teams
+            const leagueKey = data.leagues[0].league_key;
+            console.log('[DEBUG] Fetching teams for league:', leagueKey);
+            
+            const teamsResponse = await fetch(`/yahoo/league/${leagueKey}/teams?include_roster=true`);
+            const teamsData = await teamsResponse.json();
+            
+            console.log('[DEBUG] Teams response:', teamsData);
+            console.log('[DEBUG] Number of teams:', teamsData.teams ? teamsData.teams.length : 0);
+            
+            if (teamsData.teams && teamsData.teams.length > 0) {
+                const myTeamDropdownMenu = document.getElementById('myTeamDropdownMenu');
+                const opponentDropdownMenu = document.getElementById('opponentTeamDropdownMenu');
+                
+                if (!myTeamDropdownMenu || !opponentDropdownMenu) {
+                    console.error('[DEBUG] Dropdown menus not found!');
+                    return;
+                }
+                
+                // Clear existing team items (keep header)
+                const myHeader = myTeamDropdownMenu.querySelector('.dropdown-header');
+                myTeamDropdownMenu.innerHTML = '';
+                if (myHeader) {
+                    myTeamDropdownMenu.appendChild(myHeader);
+                } else {
+                    const newHeader = document.createElement('li');
+                    newHeader.innerHTML = '<h6 class="dropdown-header">Select from Yahoo League</h6>';
+                    myTeamDropdownMenu.appendChild(newHeader);
+                }
+                
+                // Clear opponent menu but keep header, divider, and manual selection
+                const oppHeader = opponentDropdownMenu.querySelector('.dropdown-header');
+                const oppDivider = opponentDropdownMenu.querySelector('.dropdown-divider');
+                const manualSelection = opponentDropdownMenu.querySelector('a[data-bs-target="#selectOpponentModal"]')?.parentElement;
+                
+                opponentDropdownMenu.innerHTML = '';
+                
+                // Re-add header
+                if (oppHeader) {
+                    opponentDropdownMenu.appendChild(oppHeader.parentElement);
+                } else {
+                    const newHeader = document.createElement('li');
+                    newHeader.innerHTML = '<h6 class="dropdown-header">Select from Yahoo League</h6>';
+                    opponentDropdownMenu.appendChild(newHeader);
+                }
+                
+                // Add teams to both dropdowns
+                teamsData.teams.forEach(team => {
+                    console.log('[DEBUG] Adding team:', team.name, 'Logo:', team.logo_url);
+                    
+                    // My Team dropdown
+                    const myItem = document.createElement('li');
+                    const myLink = document.createElement('a');
+                    myLink.className = 'dropdown-item';
+                    myLink.href = '#';
+                    myLink.textContent = team.name;
+                    myLink.onclick = (e) => {
+                        e.preventDefault();
+                        selectTeamFromYahoo(team, 'my');
+                    };
+                    myItem.appendChild(myLink);
+                    myTeamDropdownMenu.appendChild(myItem);
+                    
+                    // Opponent dropdown
+                    const oppItem = document.createElement('li');
+                    const oppLink = document.createElement('a');
+                    oppLink.className = 'dropdown-item';
+                    oppLink.href = '#';
+                    oppLink.textContent = team.name;
+                    oppLink.onclick = (e) => {
+                        e.preventDefault();
+                        selectTeamFromYahoo(team, 'opponent');
+                    };
+                    oppItem.appendChild(oppLink);
+                    opponentDropdownMenu.appendChild(oppItem);
+                });
+                
+                // Re-add divider and manual selection to opponent
+                if (oppDivider) {
+                    opponentDropdownMenu.appendChild(oppDivider);
+                } else {
+                    const newDivider = document.createElement('li');
+                    newDivider.innerHTML = '<hr class="dropdown-divider">';
+                    opponentDropdownMenu.appendChild(newDivider);
+                }
+                
+                if (manualSelection) {
+                    opponentDropdownMenu.appendChild(manualSelection);
+                } else {
+                    const newManual = document.createElement('li');
+                    const manualLink = document.createElement('a');
+                    manualLink.className = 'dropdown-item';
+                    manualLink.href = '#';
+                    manualLink.setAttribute('data-bs-toggle', 'modal');
+                    manualLink.setAttribute('data-bs-target', '#selectOpponentModal');
+                    manualLink.innerHTML = '<i class="fas fa-hand-pointer"></i> Manual Selection';
+                    newManual.appendChild(manualLink);
+                    opponentDropdownMenu.appendChild(newManual);
+                }
+                
+                console.log(`✅ Loaded ${teamsData.teams.length} teams into dropdowns`);
+                
+                // Check if Yahoo Matchup Stats mode and auto-load matchup
+                const urlParams = new URLSearchParams(window.location.search);
+                const season = urlParams.get('season');
+                if (season === 'yahoo-matchup') {
+                    // DISABLED: Auto-loading first matchup from scoreboard
+                    // Users now manually select teams from dropdown
+                    // The selectTeamFromYahoo() function handles stats loading
+                    console.log('[MATCHUP] Yahoo matchup mode active - please select teams from dropdown');
+                }
+            } else {
+                console.warn('[DEBUG] No teams found in response');
+            }
+        } else {
+            console.warn('[DEBUG] No leagues found or API error');
+        }
+    } catch (error) {
+        console.error('[ERROR] Error loading Yahoo teams:', error);
+    }
+}
+
+// Select Team from Yahoo (unified function for both my team and opponent)
+async function selectTeamFromYahoo(team, teamType) {
+    if (!team || !team.team_key) return;
+    
+    console.log('[DEBUG] Selecting team:', team.name, 'Type:', teamType);
+    console.log('[DEBUG] Team data:', team);
+    
+    try {
+        // Use roster from teams response if available
+        let roster = team.roster || [];
+        
+        console.log('[DEBUG] Roster from team object:', roster ? roster.length : 0, 'players');
+        
+        // If no roster in team object, fetch it separately
+        if (!roster || roster.length === 0) {
+            console.log('[DEBUG] Fetching roster separately for:', team.team_key);
+            const response = await fetch(`/yahoo/team/${team.team_key}/roster`);
+            const data = await response.json();
+            roster = data.roster || [];
+            console.log('[DEBUG] Fetched roster:', roster.length, 'players');
+        }
+        
+        // In yahoo-matchup mode, fetch team stats from current matchup
+        let teamStats = {};
+        let currentWeek = null;
+        const urlParams = new URLSearchParams(window.location.search);
+        const season = urlParams.get('season');
+        
+        if (season === 'yahoo-matchup') {
+            console.log('[DEBUG] Yahoo matchup mode - fetching team stats from scoreboard');
+            try {
+                const leagueKey = team.team_key.split('.t.')[0]; // Extract league key from team key
+                const scoreboardResponse = await fetch(`/yahoo/league/${leagueKey}/scoreboard`);
+                const scoreboardData = await scoreboardResponse.json();
+                
+                if (scoreboardData.success && scoreboardData.matchups) {
+                    currentWeek = scoreboardData.week || scoreboardData.current_week;
+                    console.log('[DEBUG] Current week:', currentWeek);
+                    
+                    // Find this team in matchups
+                    for (const matchup of scoreboardData.matchups) {
+                        for (const matchupTeam of matchup.teams) {
+                            if (matchupTeam.team_key === team.team_key) {
+                                teamStats = matchupTeam.stats || {};
+                                console.log('[DEBUG] Found team stats from scoreboard:', teamStats);
+                                break;
+                            }
+                        }
+                        if (Object.keys(teamStats).length > 0) break;
+                    }
+                }
+            } catch (error) {
+                console.warn('[WARN] Failed to fetch team stats:', error);
+            }
+        }
+        
+        // Allow selection even with empty roster (pre-draft situation)
+        const endpoint = teamType === 'my' ? '/api/save-yahoo-my-team' : '/api/save-yahoo-opponent';
+        
+        console.log('[DEBUG] Saving to:', endpoint);
+        console.log('[DEBUG] Team name:', team.name);
+        console.log('[DEBUG] Logo URL:', team.logo_url);
+        console.log('[DEBUG] Players count:', roster.length);
+        console.log('[DEBUG] Team stats:', teamStats);
+        console.log('[DEBUG] Current week:', currentWeek);
+        
+        // Allow saving even with empty roster
+        const playerNames = roster.length > 0 ? roster.map(p => p.player_name || p.name) : [];
+        
+        await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                team: playerNames,
+                team_name: team.name,
+                logo_url: team.logo_url || team.team_logo_url || '',
+                is_manual: false,
+                stats: teamStats,
+                week: currentWeek
+            })
+        });
+        
+        console.log('[DEBUG] Team saved, reloading page...');
+        
+        // Show info message if roster is empty
+        if (roster.length === 0) {
+            console.log('[INFO] Team has no players (pre-draft)');
+        }
+        
+        window.location.reload();
+    } catch (error) {
+        console.error('[ERROR] Error loading team:', error);
+        alert('Failed to load team. Please try again.');
+    }
+}
+
+// Select Random Opponent
+async function selectRandomOpponent() {
+    if (!confirm('Generate a random opponent team?')) return;
+    
+    try {
+        const response = await fetch('/api/random-opponent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Could not create random team!');
+    }
+}
+
+// Initialize modal when opened
+document.getElementById('selectOpponentModal')?.addEventListener('shown.bs.modal', function() {
+    opponentTeam = [];
+    opponentRoster = {
+        PG: null, SG: null, G: null, SF: null, PF: null,
+        F: null, C1: null, C2: null, UTIL1: null, UTIL2: null
+    };
+    updateOpponentModal();
+    updateOpponentRosterStatus();
+    updateOppCreditDisplay();
+    validateOppTeam();
+    applyOppFilters();
+});
+
+// Yahoo Matchup Import Functions
+async function loadYahooLeaguesForMatchup() {
+    const modalBody = document.querySelector('#yahooMatchupModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading Yahoo leagues...</p></div>';
+    
+    try {
+        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const data = await response.json();
+        
+        if (data.success && data.leagues && data.leagues.length > 0) {
+            let html = '<div class="list-group">';
+            data.leagues.forEach(league => {
+                html += `
+                    <a href="javascript:void(0)" class="list-group-item list-group-item-action" onclick="selectYahooLeagueForMatchup('${league.league_key}', '${league.name}')">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">${league.name}</h5>
+                            <small class="text-muted">${league.season}</small>
+                        </div>
+                        <p class="mb-1"><i class="bi bi-people"></i> ${league.num_teams || 0} Teams</p>
+                    </a>
+                `;
+            });
+            html += '</div>';
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">You are not a member of any Yahoo league.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading Yahoo leagues:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while loading leagues.</div>';
+    }
+}
+
+async function selectYahooLeagueForMatchup(leagueKey, leagueName) {
+    const modalBody = document.querySelector('#yahooMatchupModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading teams...</p></div>';
+    
+    try {
+        const response = await fetch(`/yahoo/league/${leagueKey}/teams?include_roster=true`);
+        const data = await response.json();
+        
+        if (data.teams && data.teams.length > 0) {
+            let html = `
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-secondary" onclick="loadYahooLeaguesForMatchup()">
+                        <i class="bi bi-arrow-left"></i> Back to Leagues
+                    </button>
+                </div>
+                <h5 class="mb-3">${leagueName} - Select Two Teams</h5>
+                <div class="row" id="yahooTeamSelector">
+            `;
+            
+            data.teams.forEach(team => {
+                const logo = team.logo_url || 'https://via.placeholder.com/50';
+                const rosterCount = team.roster ? team.roster.length : 0;
+                
+                html += `
+                    <div class="col-md-6 mb-3">
+                        <div class="card team-select-card" data-team-key="${team.team_key}" data-team-name="${team.name}">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center">
+                                    <img src="${logo}" alt="${team.name}" class="rounded me-3" style="width: 50px; height: 50px; object-fit: cover;">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-0">${team.name}</h6>
+                                        <small class="text-muted">
+                                            <i class="bi bi-person"></i> ${team.managers ? team.managers.join(', ') : 'Unknown'}
+                                            | <i class="bi bi-people"></i> ${rosterCount} Players
+                                        </small>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input team-checkbox" type="checkbox" value="${team.team_key}" id="team_${team.team_key}" onchange="updateMatchupTeamSelection()">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                </div>
+                <div class="alert alert-info mt-3" id="selectionInfo">
+                    <i class="bi bi-info-circle"></i> Please select 2 teams to compare.
+                </div>
+                <div class="d-grid">
+                    <button class="btn btn-success" id="importMatchupBtn" onclick="importYahooMatchup()" disabled>
+                        <i class="bi bi-check2-all"></i> Compare Teams
+                    </button>
+                </div>
+            `;
+            
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">No teams found in this league.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading teams:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while loading teams.</div>';
+    }
+}
+
+let selectedMatchupTeams = [];
+
+function updateMatchupTeamSelection() {
+    const checkboxes = document.querySelectorAll('.team-checkbox:checked');
+    selectedMatchupTeams = Array.from(checkboxes).map(cb => ({
+        key: cb.value,
+        name: cb.closest('.team-select-card').dataset.teamName
+    }));
+    
+    const info = document.getElementById('selectionInfo');
+    const btn = document.getElementById('importMatchupBtn');
+    
+    if (selectedMatchupTeams.length === 0) {
+        info.className = 'alert alert-info mt-3';
+        info.innerHTML = '<i class="bi bi-info-circle"></i> Please select 2 teams to compare.';
+        btn.disabled = true;
+    } else if (selectedMatchupTeams.length === 1) {
+        info.className = 'alert alert-warning mt-3';
+        info.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${selectedMatchupTeams[0].name}</strong> selected. Select one more team.`;
+        btn.disabled = true;
+    } else if (selectedMatchupTeams.length === 2) {
+        info.className = 'alert alert-success mt-3';
+        info.innerHTML = `<i class="bi bi-check-circle-fill"></i> <strong>${selectedMatchupTeams[0].name}</strong> vs <strong>${selectedMatchupTeams[1].name}</strong> ready!`;
+        btn.disabled = false;
+    } else {
+        info.className = 'alert alert-danger mt-3';
+        info.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Maximum 2 teams can be selected!';
+        btn.disabled = true;
+        
+        // Uncheck extra checkboxes
+        Array.from(checkboxes).slice(2).forEach(cb => cb.checked = false);
+        updateMatchupTeamSelection();
+    }
+}
+
+async function importYahooMatchup() {
+    if (selectedMatchupTeams.length !== 2) {
+        alert('Please select 2 teams!');
+        return;
+    }
+    
+    const modalBody = document.querySelector('#yahooMatchupModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-success" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading teams...</p></div>';
+    
+    try {
+        // Fetch both team rosters
+        const team1Response = await fetch(`/yahoo/team/${selectedMatchupTeams[0].key}/roster`);
+        const team1Data = await team1Response.json();
+        
+        const team2Response = await fetch(`/yahoo/team/${selectedMatchupTeams[1].key}/roster`);
+        const team2Data = await team2Response.json();
+        
+        if (team1Data.roster && team2Data.roster) {
+            // Save both teams as Yahoo teams (not demo mode teams)
+            await fetch('/api/save-yahoo-teams', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    my_team: team1Data.roster.map(p => p.name),
+                    opponent_team: team2Data.roster.map(p => p.name)
+                })
+            });
+            
+            modalBody.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle"></i> <strong>Success!</strong><br>
+                    <strong>My Team:</strong> ${selectedMatchupTeams[0].name} (${team1Data.roster.length} players)<br>
+                    <strong>Opponent:</strong> ${selectedMatchupTeams[1].name} (${team2Data.roster.length} players)
+                </div>
+                <div class="d-grid">
+                    <button class="btn btn-primary" onclick="location.reload()">Refresh Page and Start Simulation</button>
+                </div>
+            `;
+        } else {
+            throw new Error('Could not get roster data');
+        }
+    } catch (error) {
+        console.error('Error importing matchup:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while importing teams.</div>';
+    }
+}
+
+// Initialize modal
+document.addEventListener('DOMContentLoaded', function() {
+    const yahooMatchupModal = document.getElementById('yahooMatchupModal');
+    if (yahooMatchupModal) {
+        yahooMatchupModal.addEventListener('show.bs.modal', loadYahooLeaguesForMatchup);
+    }
+});
+
+// Load current Yahoo Matchup when in yahoo-matchup mode
+async function loadCurrentYahooMatchup(leagueKey, teams) {
+    try {
+        console.log('[YAHOO-MATCHUP] Loading current week scoreboard...');
+        
+        // Get scoreboard
+        const scoreboardResponse = await fetch(`/yahoo/league/${leagueKey}/scoreboard`);
+        const scoreboardData = await scoreboardResponse.json();
+        
+        if (!scoreboardData.success || !scoreboardData.matchups) {
+            console.error('[YAHOO-MATCHUP] Failed to load scoreboard');
+            return;
+        }
+        
+        console.log('[YAHOO-MATCHUP] Found', scoreboardData.matchups.length, 'matchups for week', scoreboardData.week);
+        
+        // Find user's team matchup (first matchup for now, can be improved to find user's team)
+        const matchup = scoreboardData.matchups[0];
+        if (!matchup || !matchup.teams || matchup.teams.length < 2) {
+            console.error('[YAHOO-MATCHUP] Invalid matchup data');
+            return;
+        }
+        
+        console.log('[YAHOO-MATCHUP] Loading matchup:', matchup.teams[0].name, 'vs', matchup.teams[1].name);
+        
+        // Load rosters for both teams
+        const team1Key = matchup.teams[0].team_key;
+        const team2Key = matchup.teams[1].team_key;
+        
+        console.log('[YAHOO-MATCHUP] Loading rosters for teams:', team1Key, team2Key);
+        
+        const [roster1Response, roster2Response] = await Promise.all([
+            fetch(`/yahoo/team/${team1Key}/roster`),
+            fetch(`/yahoo/team/${team2Key}/roster`)
+        ]);
+        
+        const roster1Data = await roster1Response.json();
+        const roster2Data = await roster2Response.json();
+        
+        if (!roster1Data.success || !roster2Data.success) {
+            console.error('[YAHOO-MATCHUP] Failed to load rosters');
+            return;
+        }
+        
+        console.log('[YAHOO-MATCHUP] Loaded rosters:', roster1Data.roster.length, 'and', roster2Data.roster.length, 'players');
+        
+        // Save both team rosters to session
+        await Promise.all([
+            fetch('/api/save-yahoo-my-team', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    team_name: matchup.teams[0].name,
+                    roster: roster1Data.roster
+                })
+            }),
+            fetch('/api/save-yahoo-opponent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    team_name: matchup.teams[1].name,
+                    roster: roster2Data.roster
+                })
+            })
+        ]);
+        
+        console.log('[YAHOO-MATCHUP] Matchup data:', JSON.stringify(matchup, null, 2));
+        console.log('[YAHOO-MATCHUP] Team 1 stats:', matchup.teams[0].stats);
+        console.log('[YAHOO-MATCHUP] Team 2 stats:', matchup.teams[1].stats);
+        
+        // Save matchup data to session
+        const saveResponse = await fetch('/yahoo/api/save-yahoo-matchup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                matchup: matchup,
+                league_name: scoreboardData.league_name || leagueKey,
+                week: scoreboardData.week
+            })
+        });
+        
+        const saveData = await saveResponse.json();
+        
+        if (saveData.success) {
+            console.log('[YAHOO-MATCHUP] Matchup data and rosters saved successfully');
+            // Reload page to display Yahoo matchup stats
+            window.location.reload();
+        } else {
+            console.error('[YAHOO-MATCHUP] Failed to save matchup data:', saveData.error);
+        }
+        
+    } catch (error) {
+        console.error('[ERROR] Loading Yahoo matchup:', error);
+    }
+}
+
+// Load Yahoo Matchups
+async function loadYahooMatchups() {
+    try {
+        console.log('[MATCHUP] Loading Yahoo matchups...');
+        
+        // Get user's leagues
+        const leaguesResponse = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const leaguesData = await leaguesResponse.json();
+        
+        if (!leaguesData.success || !leaguesData.leagues || leaguesData.leagues.length === 0) {
+            alert('No Yahoo leagues found. Please connect to Yahoo Fantasy first.');
+            return;
+        }
+        
+        console.log('[MATCHUP] Found leagues:', leaguesData.leagues.length);
+        
+        // Get first league's scoreboard
+        const league = leaguesData.leagues[0];
+        const leagueKey = league.league_key;
+        
+        console.log('[MATCHUP] Loading scoreboard for:', league.name);
+        
+        const scoreboardResponse = await fetch(`/yahoo/league/${leagueKey}/scoreboard`);
+        const scoreboardData = await scoreboardResponse.json();
+        
+        if (!scoreboardData.success) {
+            alert('Failed to load matchups: ' + scoreboardData.error);
+            return;
+        }
+        
+        console.log('[MATCHUP] Loaded matchups:', scoreboardData.matchups.length);
+        
+        // Populate dropdown with matchups
+        const dropdownMenu = document.getElementById('matchupDropdownMenu');
+        dropdownMenu.innerHTML = `
+            <li><h6 class="dropdown-header">Week ${scoreboardData.week} Matchups</h6></li>
+        `;
+        
+        scoreboardData.matchups.forEach((matchup, idx) => {
+            if (matchup.teams && matchup.teams.length >= 2) {
+                const team1 = matchup.teams[0];
+                const team2 = matchup.teams[1];
+                
+                const item = document.createElement('li');
+                const link = document.createElement('a');
+                link.className = 'dropdown-item';
+                link.href = '#';
+                link.innerHTML = `
+                    <i class="fas fa-vs"></i> ${team1.name} vs ${team2.name}
+                `;
+                link.onclick = (e) => {
+                    e.preventDefault();
+                    loadYahooMatchupData(matchup, league);
+                };
+                item.appendChild(link);
+                dropdownMenu.appendChild(item);
+            }
+        });
+        
+        // Update label
+        document.getElementById('currentMatchupLabel').textContent = `Week ${scoreboardData.week} Matchups`;
+        
+    } catch (error) {
+        console.error('[ERROR] Loading matchups:', error);
+        alert('Failed to load matchups. Please try again.');
+    }
+}
+
+// Load specific matchup data
+async function loadYahooMatchupData(matchup, league) {
+    console.log('[MATCHUP] Loading matchup data:', matchup);
+    
+    const team1 = matchup.teams[0];
+    const team2 = matchup.teams[1];
+    
+    try {
+        // Get detailed stats for both teams
+        const team1Response = await fetch(`/yahoo/team/${team1.team_key}/matchup?week=${matchup.week}`);
+        const team1Data = await team1Response.json();
+        
+        console.log('[MATCHUP] Team 1 matchup data:', team1Data);
+        
+        if (!team1Data.success) {
+            alert('Failed to load matchup details');
+            return;
+        }
+        
+        // Save matchup data to session and reload
+        const saveResponse = await fetch('/api/save-yahoo-matchup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                matchup: team1Data.matchup,
+                league_name: league.name,
+                week: matchup.week
+            })
+        });
+        
+        const saveData = await saveResponse.json();
+        
+        if (saveData.success) {
+            alert(`Loaded matchup: ${team1.name} vs ${team2.name}\nWeek ${matchup.week}`);
+            window.location.reload();
+        } else {
+            alert('Failed to save matchup: ' + saveData.error);
+        }
+        
+    } catch (error) {
+        console.error('[ERROR] Loading matchup data:', error);
+        alert('Failed to load matchup details');
+    }
+}
+
+</script>
+
+<!-- Yahoo Matchup Import Modal -->
+<div class="modal fade" id="yahooMatchupModal" tabindex="-1" aria-labelledby="yahooMatchupModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="yahooMatchupModalLabel">
+                    <i class="fab fa-yahoo"></i> Import Matchup from Yahoo Fantasy
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

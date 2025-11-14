@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Yahoo Fantasy Leagues{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="display-5">
+                    <i class="bi bi-trophy-fill text-warning me-2"></i>
+                    Yahoo Fantasy Leagues
+                </h1>
+                <a href="{{ url_for('yahoo.yahoo_logout') }}" class="btn btn-outline-danger">
+                    <i class="bi bi-box-arrow-right me-1"></i> Logout
+                </a>
+            </div>
+            <p class="text-muted">Season: {{ season }}</p>
+        </div>
+    </div>
+
+    {% if leagues %}
+    <div class="row">
+        {% for league in leagues %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">{{ league.name }}</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <span class="badge bg-secondary">{{ league.scoring_type|upper }}</span>
+                        <span class="badge bg-info">{{ league.num_teams }} Teams</span>
+                        <span class="badge bg-{% if league.draft_status == 'postdraft' %}success{% else %}warning{% endif %}">
+                            {{ league.draft_status|title }}
+                        </span>
+                    </div>
+                    
+                    <ul class="list-unstyled mb-3">
+                        <li><strong>League ID:</strong> {{ league.league_id }}</li>
+                        <li><strong>Current Week:</strong> {{ league.current_week }}</li>
+                        <li><strong>Season:</strong> {{ league.season }}</li>
+                        {% if league.start_date %}
+                        <li><strong>Start:</strong> {{ league.start_date }}</li>
+                        {% endif %}
+                    </ul>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="/yahoo/league/{{ league.league_key }}/teams?include_roster=true&format=html" 
+                           class="btn btn-primary">
+                            <i class="bi bi-people-fill me-1"></i> View Teams
+                        </a>
+                        <a href="/yahoo/league/{{ league.league_key }}/view?tab=standings" 
+                           class="btn btn-outline-primary">
+                            <i class="bi bi-bar-chart-fill me-1"></i> Standings
+                        </a>
+                        <a href="/yahoo/league/{{ league.league_key }}/view?tab=free-agents" 
+                           class="btn btn-outline-secondary">
+                            <i class="bi bi-search me-1"></i> Free Agents
+                        </a>
+                        {% if league.url %}
+                        <a href="{{ league.url }}" target="_blank" class="btn btn-sm btn-outline-dark">
+                            <i class="bi bi-box-arrow-up-right me-1"></i> Open in Yahoo
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info" role="alert">
+        <h4 class="alert-heading">No Leagues Found</h4>
+        <p>You don't have any Yahoo Fantasy Basketball leagues for the {{ season }} season.</p>
+        <hr>
+        <p class="mb-0">Create a league on <a href="https://basketball.fantasysports.yahoo.com/" target="_blank">Yahoo Fantasy Basketball</a></p>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.hover-shadow {
+    transition: box-shadow 0.3s ease-in-out;
+}
+.hover-shadow:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+</style>
+{% endblock %}

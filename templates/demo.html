@@ -1,0 +1,480 @@
+{% extends "base.html" %}
+
+{% block title %}Demo Mode - NBA Fantasy Assistant{% endblock %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-warning">
+            <h4><i class="fas fa-vial"></i> Demo Mode</h4>
+            <p class="mb-0">
+                This page allows you to test features without a Yahoo Fantasy League connection. 
+                You can manually select players to build a team, run matchup simulations, and get recommendations.
+                <br>
+                <strong>For Yahoo Fantasy League users:</strong> 
+                <a href="{{ url_for('yahoo.list_leagues') }}?format=html" class="alert-link">View My Leagues</a> 
+                option allows you to use your real Yahoo roster.
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <ul class="nav nav-tabs" id="demoTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="roster-tab" data-bs-toggle="tab" data-bs-target="#roster" type="button">
+                    <i class="fas fa-users"></i> Build Team
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="matchup-tab" data-bs-toggle="tab" data-bs-target="#matchup" type="button">
+                    <i class="fas fa-random"></i> Matchup Simulator
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="recommendations-tab" data-bs-toggle="tab" data-bs-target="#recommendations" type="button">
+                    <i class="fas fa-lightbulb"></i> Recommendations
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content mt-3" id="demoTabContent">
+            <!-- Roster Builder Tab -->
+            <div class="tab-pane fade show active" id="roster" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-users"></i> Build Your Team (Demo Mode)</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Same content as index.html team builder -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="alert alert-info">
+                                    <strong>Credit Budget:</strong> <span id="demoTotalCredit">0</span> / 200
+                                    <br>
+                                    <strong>Player Count:</strong> <span id="demoPlayerCount">0</span> / 10
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#selectPlayersModal">
+                            <i class="fas fa-user-plus"></i> Add / Edit Players
+                        </button>
+                        
+                        <div id="demoRosterDisplay" class="mt-3">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Matchup Simulator Tab -->
+            <div class="tab-pane fade" id="matchup" role="tabpanel">
+                <div class="card">
+                    <div class="card-body">
+                        <p class="text-muted">Build your team first to run matchup simulations.</p>
+                        <a href="{{ url_for('demo_matchup') }}" class="btn btn-primary" target="_blank">
+                            <i class="fas fa-external-link-alt"></i> Open Matchup Simulator
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommendations Tab -->
+            <div class="tab-pane fade" id="recommendations" role="tabpanel">
+                <div class="card">
+                    <div class="card-body">
+                        <p class="text-muted">Build your team first to get roster recommendations.</p>
+                        <a href="{{ url_for('demo_recommendations') }}" class="btn btn-primary" target="_blank">
+                            <i class="fas fa-external-link-alt"></i> Open Recommendations
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Player Selection Modal (Same as index.html) -->
+<div class="modal fade" id="selectPlayersModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select Player (Demo Mode)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Advanced Filters -->
+                <div class="row mb-3 g-2">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">🔍 Search Player</label>
+                        <input type="text" id="playerSearch" class="form-control form-control-sm" placeholder="Name or team...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Position</label>
+                        <select id="positionFilter" class="form-select form-select-sm">
+                            <option value="">All</option>
+                            <option value="PG">Point Guard (PG)</option>
+                            <option value="SG">Shooting Guard (SG)</option>
+                            <option value="SF">Small Forward (SF)</option>
+                            <option value="PF">Power Forward (PF)</option>
+                            <option value="C">Center (C)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Team</label>
+                        <select id="teamFilter" class="form-select form-select-sm">
+                            <option value="">All Teams</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Sort By</label>
+                        <select id="sortCategory" class="form-select form-select-sm">
+                            <option value="credit">💰 Credit</option>
+                            <option value="points">📊 Points (PTS)</option>
+                            <option value="rebounds">🏀 Rebounds (REB)</option>
+                            <option value="assists">🤝 Assists (AST)</option>
+                            <option value="steals">👐 Steals (STL)</option>
+                            <option value="blocks">🚫 Blocks (BLK)</option>
+                            <option value="three_pointers_made">🎯 3-Pointers (3PM)</option>
+                            <option value="fg_percentage">🎯 Field Goal % (FG%)</option>
+                            <option value="ft_percentage">🆓 Free Throw % (FT%)</option>
+                            <option value="turnovers">❌ Turnovers (TO)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Direction</label>
+                        <select id="sortDirection" class="form-select form-select-sm">
+                            <option value="desc">⬇️ High → Low</option>
+                            <option value="asc">⬆️ Low → High</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label small mb-1">&nbsp;</label>
+                        <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetFilters()" title="Reset Filters">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Stats Summary -->
+                <div class="alert alert-light py-2 mb-2">
+                    <small class="text-muted">
+                        <strong>Total:</strong> <span id="totalPlayers">0</span> players | 
+                        <strong>Selected:</strong> <span id="selectedCount">0</span>/10 | 
+                        <strong>Credit:</strong> <span id="usedCredit">0</span>/200
+                    </small>
+                </div>
+                
+                <div class="table-responsive" style="max-height: 450px; overflow-y: auto;">
+                    <table class="table table-hover table-sm table-striped" id="playersTable">
+                        <thead class="sticky-top bg-white shadow-sm">
+                            <tr>
+                                <th style="min-width: 150px;">Name</th>
+                                <th>Pos</th>
+                                <th>Team</th>
+                                <th>💰</th>
+                                <th>PTS</th>
+                                <th>REB</th>
+                                <th>AST</th>
+                                <th>STL</th>
+                                <th>BLK</th>
+                                <th>3PM</th>
+                                <th>FG%</th>
+                                <th>FT%</th>
+                                <th>TO</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="playersTableBody">
+                            <!-- Will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="saveDemoTeam()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let demoTeam = [];
+let allPlayers = [];
+let playerCredits = {};
+
+// Load players and credits
+Promise.all([
+    fetch('/api/players?season=2024-25&limit=all').then(r => r.json()),
+    fetch('/api/draft/rankings').then(r => r.json()),
+    fetch('/api/get-team').then(r => r.json())
+]).then(([playersData, creditsData, teamData]) => {
+    if (playersData.success) {
+        allPlayers = playersData.players;
+        
+        // Load existing team from session
+        if (teamData.success && teamData.team) {
+            demoTeam = teamData.team;
+        }
+        
+        // Build credits map
+        if (creditsData.success) {
+            creditsData.rankings.forEach(r => {
+                playerCredits[r.name] = r.credit || 0;
+            });
+        }
+        
+        // Get unique teams for filter
+        const teams = [...new Set(allPlayers.map(p => p.team))].sort();
+        const teamFilter = document.getElementById('teamFilter');
+        teams.forEach(team => {
+            const opt = document.createElement('option');
+            opt.value = team;
+            opt.textContent = team;
+            teamFilter.appendChild(opt);
+        });
+        
+        renderPlayersTable();
+        updateDemoDisplay(); // Show loaded team
+        
+        // Add filter listeners
+        document.getElementById('playerSearch').addEventListener('input', applyFilters);
+        document.getElementById('positionFilter').addEventListener('change', applyFilters);
+        document.getElementById('teamFilter').addEventListener('change', applyFilters);
+        document.getElementById('sortCategory').addEventListener('change', applyFilters);
+        document.getElementById('sortDirection').addEventListener('change', applyFilters);
+    }
+});
+
+function renderPlayersTable() {
+    const tbody = document.getElementById('playersTableBody');
+    
+    // Create rows with all 9 categories
+    const rows = allPlayers.map(player => {
+        const stats = player.stats || {};
+        const credit = playerCredits[player.name] || 0;
+        const isSelected = demoTeam.includes(player.name);
+        
+        return {
+            html: `
+                <tr data-player-name="${player.name}" data-position="${player.position}" data-team="${player.team}"
+                    data-credit="${credit}"
+                    data-points="${stats.points || 0}"
+                    data-rebounds="${stats.rebounds || 0}"
+                    data-assists="${stats.assists || 0}"
+                    data-steals="${stats.steals || 0}"
+                    data-blocks="${stats.blocks || 0}"
+                    data-threes="${stats.three_pointers_made || 0}"
+                    data-fg-pct="${stats.fg_percentage || 0}"
+                    data-ft-pct="${stats.ft_percentage || 0}"
+                    data-turnovers="${stats.turnovers || 0}"
+                    class="${isSelected ? 'table-success' : ''}">
+                    <td><strong>${player.name}</strong></td>
+                    <td><span class="badge bg-info">${player.position}</span></td>
+                    <td><small>${player.team}</small></td>
+                    <td><span class="badge ${credit >= 40 ? 'bg-danger' : credit >= 25 ? 'bg-warning text-dark' : credit >= 15 ? 'bg-info' : 'bg-success'}">${credit}</span></td>
+                    <td>${(stats.points || 0).toFixed(1)}</td>
+                    <td>${(stats.rebounds || 0).toFixed(1)}</td>
+                    <td>${(stats.assists || 0).toFixed(1)}</td>
+                    <td>${(stats.steals || 0).toFixed(2)}</td>
+                    <td>${(stats.blocks || 0).toFixed(2)}</td>
+                    <td>${(stats.three_pointers_made || 0).toFixed(1)}</td>
+                    <td>${stats.fg_percentage ? (stats.fg_percentage * 100).toFixed(1) + '%' : '-'}</td>
+                    <td>${stats.ft_percentage ? (stats.ft_percentage * 100).toFixed(1) + '%' : '-'}</td>
+                    <td>${(stats.turnovers || 0).toFixed(1)}</td>
+                    <td>
+                        <button class="btn btn-sm ${isSelected ? 'btn-danger' : 'btn-success'}" 
+                                onclick="togglePlayer('${player.name}')"
+                                ${!isSelected && demoTeam.length >= 10 ? 'disabled' : ''}>
+                            <i class="fas fa-${isSelected ? 'times' : 'plus'}"></i>
+                        </button>
+                    </td>
+                </tr>
+            `,
+            name: player.name,
+            credit: credit,
+            stats: stats
+        };
+    });
+    
+    tbody.innerHTML = rows.map(r => r.html).join('');
+    updateStats();
+    applyFilters();
+}
+
+function applyFilters() {
+    const search = document.getElementById('playerSearch').value.toLowerCase();
+    const posFilter = document.getElementById('positionFilter').value;
+    const teamFilter = document.getElementById('teamFilter').value;
+    const sortBy = document.getElementById('sortCategory').value;
+    const sortDir = document.getElementById('sortDirection').value;
+    
+    const tbody = document.getElementById('playersTableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    // Filter
+    let visibleCount = 0;
+    rows.forEach(row => {
+        const name = row.dataset.playerName.toLowerCase();
+        const team = row.dataset.team.toLowerCase();
+        const pos = row.dataset.position;
+        
+        let show = true;
+        
+        if (search && !name.includes(search) && !team.includes(search)) show = false;
+        if (posFilter && !pos.includes(posFilter)) show = false;
+        if (teamFilter && row.dataset.team !== teamFilter) show = false;
+        
+        row.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+    });
+    
+    // Sort visible rows
+    const visibleRows = rows.filter(r => r.style.display !== 'none');
+    visibleRows.sort((a, b) => {
+        let aVal, bVal;
+        
+        if (sortBy === 'credit') {
+            aVal = parseFloat(a.dataset.credit);
+            bVal = parseFloat(b.dataset.credit);
+        } else if (sortBy === 'fg_percentage' || sortBy === 'ft_percentage') {
+            aVal = parseFloat(a.dataset[sortBy.replace('_', '-')]);
+            bVal = parseFloat(b.dataset[sortBy.replace('_', '-')]);
+        } else if (sortBy === 'three_pointers_made') {
+            aVal = parseFloat(a.dataset.threes);
+            bVal = parseFloat(b.dataset.threes);
+        } else {
+            aVal = parseFloat(a.dataset[sortBy]);
+            bVal = parseFloat(b.dataset[sortBy]);
+        }
+        
+        return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+    
+    // Reorder
+    visibleRows.forEach(row => tbody.appendChild(row));
+    
+    // Update count
+    document.getElementById('totalPlayers').textContent = visibleCount;
+}
+
+function resetFilters() {
+    document.getElementById('playerSearch').value = '';
+    document.getElementById('positionFilter').value = '';
+    document.getElementById('teamFilter').value = '';
+    document.getElementById('sortCategory').value = 'credit';
+    document.getElementById('sortDirection').value = 'desc';
+    applyFilters();
+}
+
+function togglePlayer(playerName) {
+    if (demoTeam.includes(playerName)) {
+        removeFromDemoTeam(playerName);
+    } else {
+        addToDemoTeam(playerName);
+    }
+}
+
+function addToDemoTeam(playerName) {
+    if (demoTeam.length >= 10) {
+        alert('Maximum 10 players can be selected!');
+        return;
+    }
+    
+    const credit = playerCredits[playerName] || 0;
+    const currentCredit = demoTeam.reduce((sum, p) => sum + (playerCredits[p] || 0), 0);
+    
+    if (currentCredit + credit > 200) {
+        alert(`Credit limit exceeded! Current: ${currentCredit}, Adding: ${credit}, Total: ${currentCredit + credit}/200`);
+        return;
+    }
+    
+    demoTeam.push(playerName);
+    updateDemoDisplay();
+    renderPlayersTable();
+}
+
+function removeFromDemoTeam(playerName) {
+    demoTeam = demoTeam.filter(p => p !== playerName);
+    updateDemoDisplay();
+    renderPlayersTable();
+}
+
+function updateStats() {
+    document.getElementById('selectedCount').textContent = demoTeam.length;
+    const totalCredit = demoTeam.reduce((sum, p) => sum + (playerCredits[p] || 0), 0);
+    document.getElementById('usedCredit').textContent = totalCredit;
+}
+
+function updateDemoDisplay() {
+    document.getElementById('demoPlayerCount').textContent = demoTeam.length;
+    
+    const totalCredit = demoTeam.reduce((sum, p) => sum + (playerCredits[p] || 0), 0);
+    document.getElementById('demoTotalCredit').textContent = totalCredit;
+    
+    const display = document.getElementById('demoRosterDisplay');
+    if (demoTeam.length === 0) {
+        display.innerHTML = '<div class="alert alert-info">No players selected yet.</div>';
+    } else {
+        display.innerHTML = `
+            <div class="row">
+                ${demoTeam.map(name => {
+                    const player = allPlayers.find(p => p.name === name);
+                    const credit = playerCredits[name] || 0;
+                    return `
+                        <div class="col-md-4 mb-2">
+                            <div class="alert alert-success d-flex justify-content-between align-items-center p-2 mb-0">
+                                <div>
+                                    <strong>${name}</strong>
+                                    <br><small class="text-muted">${player?.position || ''} - ${player?.team || ''}</small>
+                                    <br><span class="badge bg-primary">${credit} credit</span>
+                                </div>
+                                <button class="btn btn-sm btn-danger" onclick="removeFromDemoTeam('${name}')">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+    
+    updateStats();
+}
+
+function saveDemoTeam() {
+    if (demoTeam.length < 10) {
+        if (!confirm(`You only selected ${demoTeam.length} players. Are you sure you want to continue without 10 players?`)) {
+            return;
+        }
+    }
+    
+    fetch('/api/save-team', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({team: demoTeam})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Team saved!\n\nPlayers: ${demoTeam.length}/10\nCredit: ${data.total_credit}/200`);
+            const modal = bootstrap.Modal.getInstance(document.getElementById('selectPlayersModal'));
+            if (modal) modal.hide();
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    })
+    .catch(err => {
+        alert('❌ Connection error: ' + err.message);
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,715 @@
+{% extends "base.html" %}
+
+{% block title %}Draft Assistant - Yahoo NBA Fantasy Assistant{% endblock %}
+
+{% block content %}
+
+<!-- Yahoo Integration Banner -->
+{% if session.yahoo_authenticated %}
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-success alert-dismissible fade show">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="fab fa-yahoo text-warning"></i>
+                    <strong>Yahoo Fantasy Connected</strong> - You can import your roster here
+                </div>
+                <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#importYahooModal">
+                    <i class="fas fa-download"></i> Import Roster from Yahoo
+                </button>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <h1><i class="fas fa-chart-line"></i> Draft Assistant
+            <span class="badge bg-info" style="font-size: 0.5em;">{{ season }} Season</span>
+        </h1>
+        <p class="lead text-muted">Historical analysis and weighted rankings for draft preparation</p>
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> 
+            Showing <strong>{{total_players}}</strong> active players from {{season}} season
+        </div>
+        <hr>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-trophy"></i> Player Rankings</h5>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary active" onclick="filterPosition('all')">All</button>
+                    <button class="btn btn-outline-primary" onclick="filterPosition('PG')">PG</button>
+                    <button class="btn btn-outline-primary" onclick="filterPosition('SG')">SG</button>
+                    <button class="btn btn-outline-primary" onclick="filterPosition('SF')">SF</button>
+                    <button class="btn btn-outline-primary" onclick="filterPosition('PF')">PF</button>
+                    <button class="btn btn-outline-primary" onclick="filterPosition('C')">C</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Search Box -->
+                <div class="mb-3">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="text" 
+                               class="form-control" 
+                               id="playerSearchInput" 
+                               placeholder="Search players by name..." 
+                               onkeyup="searchPlayers()">
+                        <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                    <small class="text-muted">Type to filter players by name</small>
+                </div>
+                
+                <!-- Results Counter -->
+                <div class="mb-2">
+                    <span class="badge bg-secondary" id="visiblePlayersCount">{{total_players}} players</span>
+                </div>
+                {% if rankings %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-dark sticky-top">
+                            <tr>
+                                <th>Rank</th>
+                                <th>Player</th>
+                                <th>Pos</th>
+                                <th>Team</th>
+                                <th><span class="badge bg-warning text-dark"><i class="fas fa-coins"></i> Credit</span></th>
+                                <th>PTS</th>
+                                <th>REB</th>
+                                <th>AST</th>
+                                <th>ST</th>
+                                <th>BLK</th>
+                                <th>3PTM</th>
+                                <th>FG%</th>
+                                <th>FT%</th>
+                                <th>TO</th>
+                                <th>Trend</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for player in rankings %}
+                            <tr class="player-row" 
+                                data-position="{{ player.position }}"
+                                data-player-id="{{ player.player_id }}"
+                                data-player-name="{{ player.name }}"
+                                data-player-credit="{{ player.credit|default(0) }}"
+                                style="cursor: pointer;">
+                                <td><span class="badge bg-secondary">{{ player.draft_rank }}</span></td>
+                                <td>
+                                    <strong>{{ player.name }}</strong>
+                                    <br><small class="text-muted">Age: {{ player.age }}</small>
+                                </td>
+                                <td>{{ player.position }}</td>
+                                <td>{{ player.team }}</td>
+                                <td>
+                                    <span class="badge {% if player.credit|default(0) >= 40 %}bg-danger{% elif player.credit|default(0) >= 25 %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                                        {{ player.credit|default(0) }}
+                                    </span>
+                                </td>
+                                <td>{{ player.weighted_stats.points|default(0)|round(1) }}</td>
+                                <td>{{ player.weighted_stats.rebounds|default(0)|round(1) }}</td>
+                                <td>{{ player.weighted_stats.assists|default(0)|round(1) }}</td>
+                                <td>{{ player.weighted_stats.steals|default(0)|round(1) }}</td>
+                                <td>{{ player.weighted_stats.blocks|default(0)|round(1) }}</td>
+                                <td>{{ player.weighted_stats.fg3m|default(0)|round(1) }}</td>
+                                <td>{{ (player.weighted_stats.fg_percentage|default(0) * 100)|round(1) }}%</td>
+                                <td>{{ (player.weighted_stats.ft_percentage|default(0) * 100)|round(1) }}%</td>
+                                <td>{{ player.weighted_stats.turnovers|default(0)|round(1) }}</td>
+                                <td>
+                                    {% if player.trends.overall_trend == 'improving' %}
+                                        <i class="fas fa-arrow-up text-success"></i>
+                                    {% elif player.trends.overall_trend == 'declining' %}
+                                        <i class="fas fa-arrow-down text-danger"></i>
+                                    {% else %}
+                                        <i class="fas fa-minus text-warning"></i>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-info" onclick="showPlayerDetails('{{ player.player_id }}')">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <p>Loading player rankings...</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Credit Budget Card -->
+        <div class="card mb-3">
+            <div class="card-header bg-warning text-dark">
+                <h5><i class="fas fa-wallet"></i> Your Credit Budget</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <h2 class="text-primary">{{ remaining_credit|default(200) }}</h2>
+                    <small class="text-muted">Remaining Credit / 200</small>
+                </div>
+                <div class="progress mb-3" style="height: 25px;">
+                    <div class="progress-bar {% if total_credit|default(0) > 180 %}bg-danger{% elif total_credit|default(0) > 150 %}bg-warning{% else %}bg-success{% endif %}" 
+                         role="progressbar" 
+                         style="width: {{ (total_credit|default(0) / 200 * 100)|round }}%"
+                         aria-valuenow="{{ total_credit|default(0) }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="200">
+                        {{ total_credit|default(0) }} / 200
+                    </div>
+                </div>
+                <div class="alert alert-info mb-0">
+                    <small>
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Selected Players:</strong> {{ my_team|length if my_team else 0 }}<br>
+                        <strong>Used:</strong> {{ total_credit|default(0) }} credit<br>
+                        <strong>Remaining:</strong> {{ remaining_credit|default(200) }} credit
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> Draft Strategy</h5>
+            </div>
+            <div class="card-body">
+                <h6>Weighting System</h6>
+                <div class="progress mb-2">
+                    <div class="progress-bar bg-success" style="width: 60%">2024-25: 60%</div>
+                </div>
+                <div class="progress mb-2">
+                    <div class="progress-bar bg-info" style="width: 30%">2023-24: 30%</div>
+                </div>
+                <div class="progress mb-3">
+                    <div class="progress-bar bg-secondary" style="width: 10%">2022-23: 10%</div>
+                </div>
+                
+                <h6>Key Metrics</h6>
+                <ul class="list-unstyled">
+                    <li><i class="fas fa-coins text-warning"></i> Player Credit Value (1-100)</li>
+                    <li><i class="fas fa-chart-bar text-primary"></i> Fantasy Value Score</li>
+                    <li><i class="fas fa-clock text-info"></i> Per-Minute Production</li>
+                    <li><i class="fas fa-trending-up text-success"></i> Performance Trends</li>
+                    <li><i class="fas fa-shield-alt text-warning"></i> Injury Risk Assessment</li>
+                </ul>
+                
+                <hr>
+                
+                <h6>Credit System</h6>
+                <div class="alert alert-warning">
+                    <small>
+                        <i class="fas fa-coins"></i> <strong>Total Budget: 200 Credits</strong><br>
+                        • Superstars: 40-60 credits<br>
+                        • Good Players: 25-40 credits<br>
+                        • Average: 15-25 credits<br>
+                        • Bench: 5-15 credits
+                    </small>
+                </div>
+                
+                <hr>
+                
+                <h6>Draft Tips</h6>
+                <div class="alert alert-info">
+                    <small>
+                        <i class="fas fa-lightbulb"></i> Focus on players with improving trends and low injury risk for consistent value.
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-balance-scale"></i> Player Comparison</h5>
+                <div>
+                    <button class="btn btn-sm btn-primary" onclick="compareSelectedPlayers()" id="compareBtn" disabled>
+                        <i class="fas fa-chart-bar"></i> Compare (<span id="selectedCount">0</span>)
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="clearSelection()" id="clearBtn" disabled>
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Click on player rows to select them for comparison (2-5 players).</p>
+                <div id="comparison-area" class="mt-3">
+                    <p class="text-center text-muted">No players selected</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Player Details Modal -->
+<div class="modal fade" id="playerModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Player Analysis</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="player-details-content">
+                    <div class="text-center py-4">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p>Loading player details...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedPlayers = [];
+let currentPositionFilter = 'all';
+
+function filterPosition(position) {
+    const rows = document.querySelectorAll('.player-row');
+    const buttons = document.querySelectorAll('.btn-group .btn');
+    
+    // Update button states
+    buttons.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    currentPositionFilter = position;
+    
+    // Apply both search and position filters
+    applyFilters();
+}
+
+function searchPlayers() {
+    applyFilters();
+}
+
+function clearSearch() {
+    document.getElementById('playerSearchInput').value = '';
+    applyFilters();
+}
+
+function applyFilters() {
+    const searchTerm = document.getElementById('playerSearchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('.player-row');
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+        const playerName = row.dataset.playerName.toLowerCase();
+        const position = row.dataset.position;
+        
+        // Check if matches search term
+        const matchesSearch = searchTerm === '' || playerName.includes(searchTerm);
+        
+        // Check if matches position filter
+        const matchesPosition = currentPositionFilter === 'all' || position.includes(currentPositionFilter);
+        
+        // Show only if matches both filters
+        if (matchesSearch && matchesPosition) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Update counter
+    document.getElementById('visiblePlayersCount').textContent = `${visibleCount} players`;
+}
+
+function showPlayerDetails(playerId) {
+    const modal = new bootstrap.Modal(document.getElementById('playerModal'));
+    modal.show();
+    
+        // Fetch real analysis data
+        document.getElementById('player-details-content').innerHTML = `
+                <div class="text-center py-4">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p>Loading player details...</p>
+                </div>`;
+        fetch(`/api/draft/player/${playerId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) throw new Error(data.error || 'Failed to load');
+                const a = data.analysis;
+                const ws = a.weighted_stats || {};
+                const trends = a.trends || {};
+                const trendIcon = (v) => v > 5 ? '<i class="fas fa-arrow-up text-success"></i>' : (v < -5 ? '<i class="fas fa-arrow-down text-danger"></i>' : '<i class="fas fa-minus text-warning"></i>');
+                document.getElementById('player-details-content').innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>${a.name} — Weighted Averages</h6>
+                            <table class="table table-sm">
+                                <tr><td>Points</td><td>${(ws.points||0).toFixed(1)}</td></tr>
+                                <tr><td>Rebounds</td><td>${(ws.rebounds||0).toFixed(1)}</td></tr>
+                                <tr><td>Assists</td><td>${(ws.assists||0).toFixed(1)}</td></tr>
+                                <tr><td>Steals</td><td>${(ws.steals||0).toFixed(1)}</td></tr>
+                                <tr><td>Blocks</td><td>${(ws.blocks||0).toFixed(1)}</td></tr>
+                                <tr><td>3-Pointers Made</td><td>${(ws.fg3m||0).toFixed(1)}</td></tr>
+                                <tr><td>FG%</td><td>${ws.fg_percentage!=null?(ws.fg_percentage*100).toFixed(1)+'%':'-'}</td></tr>
+                                <tr><td>FT%</td><td>${ws.ft_percentage!=null?(ws.ft_percentage*100).toFixed(1)+'%':'-'}</td></tr>
+                                <tr><td>Turnovers</td><td>${(ws.turnovers||0).toFixed(1)}</td></tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Trend Analysis</h6>
+                            <div>${trendIcon(trends.points_trend||0)} Points: ${(trends.points_trend||0).toFixed?trends.points_trend.toFixed(1):trends.points_trend||0}%</div>
+                            <div>${trendIcon(trends.rebounds_trend||0)} Rebounds: ${(trends.rebounds_trend||0).toFixed?trends.rebounds_trend.toFixed(1):trends.rebounds_trend||0}%</div>
+                            <div>${trendIcon(trends.assists_trend||0)} Assists: ${(trends.assists_trend||0).toFixed?trends.assists_trend.toFixed(1):trends.assists_trend||0}%</div>
+                            <div class="mt-2"><strong>Overall:</strong> ${trends.overall_trend||'stable'}</div>
+                            <div class="mt-2"><strong>Injury risk:</strong> ${a.injury_risk||'unknown'}</div>
+                        </div>
+                    </div>`;
+            })
+            .catch(err => {
+                document.getElementById('player-details-content').innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
+            });
+}
+
+// Add click handlers for player selection (comparison feature)
+document.addEventListener('DOMContentLoaded', function() {
+    const playerRows = document.querySelectorAll('.player-row');
+    playerRows.forEach(row => {
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('.btn')) return; // Don't select if clicking button
+            
+            const playerId = this.dataset.playerId;
+            const playerName = this.dataset.playerName;
+            
+            // Toggle selection
+            this.classList.toggle('table-active');
+            
+            if (this.classList.contains('table-active')) {
+                // Add to selected players
+                if (!selectedPlayers.find(p => p.id === playerId)) {
+                    selectedPlayers.push({ id: playerId, name: playerName });
+                }
+            } else {
+                // Remove from selected players
+                selectedPlayers = selectedPlayers.filter(p => p.id !== playerId);
+            }
+            
+            updateSelectionUI();
+        });
+    });
+});
+
+function updateSelectionUI() {
+    const count = selectedPlayers.length;
+    document.getElementById('selectedCount').textContent = count;
+    document.getElementById('compareBtn').disabled = count < 2;
+    document.getElementById('clearBtn').disabled = count === 0;
+    
+    const comparisonArea = document.getElementById('comparison-area');
+    
+    if (count === 0) {
+        comparisonArea.innerHTML = '<p class="text-center text-muted">No players selected</p>';
+    } else if (count < 2) {
+        comparisonArea.innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> 
+                ${count} player selected. Select at least 2 players to compare.
+            </div>`;
+    } else {
+        comparisonArea.innerHTML = `
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i> 
+                ${count} players selected: ${selectedPlayers.map(p => p.name).join(', ')}
+            </div>`;
+    }
+}
+
+function clearSelection() {
+    selectedPlayers = [];
+    document.querySelectorAll('.player-row').forEach(row => {
+        row.classList.remove('table-active');
+    });
+    updateSelectionUI();
+}
+
+function compareSelectedPlayers() {
+    if (selectedPlayers.length < 2) {
+        alert('Please select at least 2 players');
+        return;
+    }
+    
+    const comparisonArea = document.getElementById('comparison-area');
+    comparisonArea.innerHTML = `
+        <div class="text-center py-4">
+            <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <p>Loading comparison...</p>
+        </div>`;
+    
+    fetch('/api/draft/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_ids: selectedPlayers.map(p => p.id) })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) throw new Error(data.error || 'Comparison failed');
+        displayComparison(data.comparisons);
+    })
+    .catch(err => {
+        comparisonArea.innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
+    });
+}
+
+function displayComparison(comparisons) {
+    const comparisonArea = document.getElementById('comparison-area');
+    
+    // Categories to compare
+    const categories = [
+        { key: 'points', label: 'Points', format: v => v.toFixed(1) },
+        { key: 'rebounds', label: 'Rebounds', format: v => v.toFixed(1) },
+        { key: 'assists', label: 'Assists', format: v => v.toFixed(1) },
+        { key: 'steals', label: 'Steals', format: v => v.toFixed(1) },
+        { key: 'blocks', label: 'Blocks', format: v => v.toFixed(1) },
+        { key: 'fg3m', label: '3-Pointers Made', format: v => v.toFixed(1) },
+        { key: 'fg_percentage', label: 'FG%', format: v => v ? (v * 100).toFixed(1) + '%' : '-' },
+        { key: 'ft_percentage', label: 'FT%', format: v => v ? (v * 100).toFixed(1) + '%' : '-' },
+        { key: 'turnovers', label: 'Turnovers', format: v => v.toFixed(1), inverse: true }
+    ];
+    
+    // Build comparison table
+    let html = '<div class="table-responsive"><table class="table table-bordered table-hover">';
+    html += '<thead class="table-light"><tr><th>Category</th>';
+    
+    comparisons.forEach(player => {
+        html += `<th class="text-center">${player.name}<br>
+                 <small class="text-muted">${player.position} - ${player.team}</small></th>`;
+    });
+    html += '</tr></thead><tbody>';
+    
+    categories.forEach(cat => {
+        html += `<tr><td><strong>${cat.label}</strong></td>`;
+        
+        const values = comparisons.map(p => p.weighted_stats?.[cat.key] || 0);
+        const maxValue = Math.max(...values);
+        const minValue = Math.min(...values);
+        
+        comparisons.forEach((player, idx) => {
+            const value = values[idx];
+            const isMax = cat.inverse ? value === minValue : value === maxValue;
+            const cellClass = isMax && value > 0 ? 'table-success fw-bold' : '';
+            
+            html += `<td class="text-center ${cellClass}">${cat.format(value)}</td>`;
+        });
+        
+        html += '</tr>';
+    });
+    
+    // Add trend analysis row
+    html += '<tr><td><strong>Trend</strong></td>';
+    comparisons.forEach(player => {
+        const trend = player.trends?.overall_trend || 'stable';
+        const trendIcon = trend === 'improving' ? '📈' : trend === 'declining' ? '📉' : '➡️';
+        html += `<td class="text-center">${trendIcon} ${trend}</td>`;
+    });
+    html += '</tr>';
+    
+    // Add injury risk row
+    html += '<tr><td><strong>Injury Risk</strong></td>';
+    comparisons.forEach(player => {
+        const risk = player.injury_risk || 'unknown';
+        const riskColor = risk === 'Low' ? 'success' : risk === 'Medium' ? 'warning' : 'danger';
+        html += `<td class="text-center"><span class="badge bg-${riskColor}">${risk}</span></td>`;
+    });
+    html += '</tr>';
+    
+    html += '</tbody></table></div>';
+    
+    comparisonArea.innerHTML = html;
+}
+
+// Yahoo Import Modal Functions
+document.addEventListener('DOMContentLoaded', function() {
+    const importYahooModal = document.getElementById('importYahooModal');
+    if (importYahooModal) {
+        importYahooModal.addEventListener('show.bs.modal', loadYahooLeagues);
+    }
+});
+
+async function loadYahooLeagues() {
+    const modalBody = document.querySelector('#importYahooModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading Yahoo leagues...</p></div>';
+    
+    try {
+        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const data = await response.json();
+        
+        if (data.leagues && data.leagues.length > 0) {
+            let html = '<div class="list-group">';
+            data.leagues.forEach(league => {
+                html += `
+                    <a href="javascript:void(0)" class="list-group-item list-group-item-action" onclick="selectYahooLeague('${league.league_key}', '${league.name}')">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">${league.name}</h5>
+                            <small class="text-muted">${league.season}</small>
+                        </div>
+                        <p class="mb-1"><i class="bi bi-people"></i> ${league.num_teams || 0} Teams</p>
+                        <small class="text-muted">League Key: ${league.league_key}</small>
+                    </a>
+                `;
+            });
+            html += '</div>';
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">You are not a member of any Yahoo league or leagues could not be loaded.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading Yahoo leagues:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while loading leagues. Please try again.</div>';
+    }
+}
+
+async function selectYahooLeague(leagueKey, leagueName) {
+    const modalBody = document.querySelector('#importYahooModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading teams...</p></div>';
+    
+    try {
+        const response = await fetch(`/yahoo/league/${leagueKey}/teams?include_roster=true`);
+        const data = await response.json();
+        
+        if (data.teams && data.teams.length > 0) {
+            let html = `
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-secondary" onclick="loadYahooLeagues()">
+                        <i class="bi bi-arrow-left"></i> Back to Leagues
+                    </button>
+                </div>
+                <h5 class="mb-3">${leagueName} - Select Your Team</h5>
+                <div class="list-group">
+            `;
+            
+            data.teams.forEach(team => {
+                const logo = team.logo_url || 'https://via.placeholder.com/50';
+                const rosterCount = team.roster ? team.roster.length : 0;
+                
+                html += `
+                    <a href="javascript:void(0)" class="list-group-item list-group-item-action" onclick="importYahooTeam('${team.team_key}', '${team.name}')">
+                        <div class="d-flex align-items-center">
+                            <img src="${logo}" alt="${team.name}" class="rounded me-3" style="width: 50px; height: 50px; object-fit: cover;">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-0">${team.name}</h6>
+                                <small class="text-muted">
+                                    <i class="bi bi-person"></i> ${team.managers ? team.managers.join(', ') : 'Unknown'}
+                                    | <i class="bi bi-people"></i> ${rosterCount} Players
+                                </small>
+                            </div>
+                        </div>
+                    </a>
+                `;
+            });
+            
+            html += '</div>';
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">No teams found in this league.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading teams:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while loading teams.</div>';
+    }
+}
+
+async function importYahooTeam(teamKey, teamName) {
+    const modalBody = document.querySelector('#importYahooModal .modal-body');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-success" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Importing roster...</p></div>';
+    
+    try {
+        // Get roster from Yahoo
+        const response = await fetch(`/yahoo/team/${teamKey}/roster`);
+        const data = await response.json();
+        
+        if (data.roster && data.roster.length > 0) {
+            // Save to My Team via API
+            const saveResponse = await fetch('/api/save-team', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: teamName,
+                    players: data.roster.map(p => ({
+                        name: p.player_name,
+                        position: p.position || 'UTIL',
+                        team: p.nba_team || '',
+                        ppg: p.stats ? p.stats.ppg : 0,
+                        apg: p.stats ? p.stats.apg : 0,
+                        rpg: p.stats ? p.stats.rpg : 0
+                    }))
+                })
+            });
+            
+            if (saveResponse.ok) {
+                // Success!
+                modalBody.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle"></i> <strong>Success!</strong><br>
+                        ${data.roster.length} players added to "My Team" roster.
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-primary" onclick="location.reload()">Refresh Page</button>
+                    </div>
+                `;
+                
+                // Update localStorage
+                localStorage.setItem('myTeam', JSON.stringify({
+                    name: teamName,
+                    players: data.roster
+                }));
+            } else {
+                throw new Error('Failed to save team');
+            }
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">No players found in this team.</div>';
+        }
+    } catch (error) {
+        console.error('Error importing team:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while importing roster. Please try again.</div>';
+    }
+}
+</script>
+
+<!-- Yahoo Import Modal -->
+<div class="modal fade" id="importYahooModal" tabindex="-1" aria-labelledby="importYahooModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importYahooModalLabel">
+                    <i class="bi bi-cloud-download"></i> Import Roster from Yahoo Fantasy
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

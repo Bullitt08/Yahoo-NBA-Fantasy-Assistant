@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block title %}Recommendations - Demo Mode{% endblock %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-12">
+        <h1><i class="fas fa-lightbulb"></i> Team Recommendations</h1>
+        <p class="lead text-muted">Smart recommendations to increase your team's winning probability</p>
+        <div class="alert alert-info">
+            <strong><i class="fas fa-coins"></i> Credit Status:</strong> 
+            Total Used: <strong>{{ total_credit }}</strong> / 200 
+            | Remaining: <strong class="{% if remaining_credit < 20 %}text-danger{% elif remaining_credit < 50 %}text-warning{% else %}text-success{% endif %}">{{ remaining_credit }}</strong>
+        </div>
+        <hr>
+    </div>
+</div>
+
+{% if no_team %}
+<!-- No team selected -->
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-warning text-center py-5">
+            <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+            <h4>You Must Select Your Team First!</h4>
+            <p class="text-muted">Select your team on the home page to get recommendations.</p>
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-home"></i> Go to Home Page
+            </a>
+        </div>
+    </div>
+</div>
+{% elif recommendations %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-list"></i> Recommended Actions ({{ recommendations|length }} recommendations)</h5>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary active" onclick="filterRecommendations('all')">All</button>
+                    <button class="btn btn-outline-primary" onclick="filterRecommendations('single_swap')">1-for-1</button>
+                    <button class="btn btn-outline-info" onclick="filterRecommendations('multi_swap')">Multi</button>
+                    <button class="btn btn-outline-primary" onclick="filterRecommendations('budget_upgrade')">Value Opportunities</button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if recommendations %}
+                    {% for rec in recommendations %}
+                    <div class="recommendation-card recommendation-{{ rec.priority }} border rounded p-3 mb-3" data-type="{{ rec.type }}">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h6 class="mb-1">
+                                    {% if rec.swap_type == '1-for-1' %}
+                                        <i class="fas fa-exchange-alt text-primary"></i> 1-for-1 Swap
+                                    {% elif rec.swap_type == '2-for-2' %}
+                                        <i class="fas fa-random text-info"></i> 2-for-2 Multi Swap
+                                    {% elif rec.swap_type == '3-for-3' %}
+                                        <i class="fas fa-random text-info"></i> 3-for-3 Multi Swap
+                                    {% elif rec.swap_type == '4-for-4' %}
+                                        <i class="fas fa-random text-warning"></i> 4-for-4 Big Swap
+                                    {% elif rec.swap_type == '5-for-5' %}
+                                        <i class="fas fa-random text-danger"></i> 5-for-5 Huge Swap
+                                    {% elif rec.swap_type == 'value-play' %}
+                                        <i class="fas fa-gem text-warning"></i> Value Opportunity
+                                    {% elif rec.type == 'add_drop' %}
+                                        <i class="fas fa-exchange-alt text-primary"></i> Player Change
+                                    {% elif rec.type == 'category_need' %}
+                                        <i class="fas fa-chart-bar text-info"></i> Category Target
+                                    {% else %}
+                                        <i class="fas fa-lightbulb text-warning"></i> Team Move
+                                    {% endif %}
+                                    
+                                    {% if rec.impact_score %}
+                                        <span class="badge bg-success ms-2">Impact: +{{ rec.impact_score }}</span>
+                                    {% endif %}
+                                </h6>
+                                <p class="mb-1">{{ rec.reasoning }}</p>
+                                {% if rec.category_improvements and rec.category_improvements|length > 0 %}
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="fas fa-arrow-up text-success"></i> <strong>Gains:</strong>
+                                        {% for cat in rec.category_improvements[:8] %}
+                                            <span class="badge badge-sm bg-success">{{ cat }}</span>
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                {% endif %}
+                                {% if rec.category_declines and rec.category_declines|length > 0 %}
+                                <div class="mt-1">
+                                    <small class="text-muted">
+                                        <i class="fas fa-arrow-down text-danger"></i> <strong>Losses:</strong>
+                                        {% for cat in rec.category_declines[:6] %}
+                                            <span class="badge badge-sm bg-danger">{{ cat }}</span>
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <span class="badge bg-{% if rec.priority == 'high' %}danger{% elif rec.priority == 'medium' %}warning{% else %}secondary{% endif %}">
+                                {% if rec.priority == 'high' %}High Priority{% elif rec.priority == 'medium' %}Medium Priority{% else %}Low Priority{% endif %}
+                            </span>
+                        </div>
+                        
+                        
+                        {% if rec.drop_players or rec.drop_player %}
+                        {# Support both new (drop_players) and old (drop_player) format #}
+                        {% set drops = rec.drop_players if rec.drop_players else [rec.drop_player] %}
+                        {% set adds = rec.add_players if rec.add_players else [rec.add_player] %}
+                        
+                        <div class="row">
+                            <div class="col-md-5">
+                                <div class="border rounded p-2 bg-light">
+                                    <small class="text-muted d-block"><i class="fas fa-minus-circle text-danger"></i> DROP ({{ drops|length }})</small>
+                                    {% for player in drops %}
+                                    <div class="{% if not loop.first %}mt-2 pt-2 border-top{% endif %}">
+                                        <strong class="text-danger">{{ player.name }}</strong><br>
+                                        <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
+                                        {% if player.credit %}
+                                        <div class="mt-1">
+                                            <span class="badge bg-warning text-dark"><i class="fas fa-coins"></i> {{ player.credit }} credit</span>
+                                        </div>
+                                        {% endif %}
+                                        {% if player.stats %}
+                                        <div class="mt-1">
+                                            <small>
+                                                <span class="badge bg-secondary">{{ player.stats.points|default(0)|round(1) }} PTS</span>
+                                                <span class="badge bg-secondary">{{ player.stats.rebounds|default(0)|round(1) }} REB</span>
+                                                <span class="badge bg-secondary">{{ player.stats.assists|default(0)|round(1) }} AST</span>
+                                                <span class="badge bg-secondary">{{ player.stats.steals|default(0)|round(1) }} STL</span>
+                                                <span class="badge bg-secondary">{{ player.stats.blocks|default(0)|round(1) }} BLK</span>
+                                            </small>
+                                            <br>
+                                            <small>
+                                                <span class="badge bg-secondary">{{ player.stats.three_pointers_made|default(0)|round(1) }} 3PM</span>
+                                                <span class="badge bg-secondary">{{ (player.stats.fg_percentage|default(0) * 100)|round(1) }}% FG</span>
+                                                <span class="badge bg-secondary">{{ (player.stats.ft_percentage|default(0) * 100)|round(1) }}% FT</span>
+                                                <span class="badge bg-secondary">{{ player.stats.turnovers|default(0)|round(1) }} TO</span>
+                                            </small>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="col-md-2 text-center align-self-center">
+                                <i class="fas fa-arrow-right fa-2x text-success"></i>
+                                {% if rec.credit_change is defined %}
+                                <div class="mt-2">
+                                    <small class="badge {% if rec.credit_change > 0 %}bg-danger{% elif rec.credit_change < 0 %}bg-success{% else %}bg-secondary{% endif %}">
+                                        {% if rec.credit_change > 0 %}+{% elif rec.credit_change < 0 %}{% endif %}{{ rec.credit_change }} credit
+                                    </small>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-5">
+                                <div class="border rounded p-2 bg-light">
+                                    <small class="text-muted d-block"><i class="fas fa-plus-circle text-success"></i> ADD ({{ adds|length }})</small>
+                                    {% for player in adds %}
+                                    <div class="{% if not loop.first %}mt-2 pt-2 border-top{% endif %}">
+                                        <strong class="text-success">{{ player.name }}</strong><br>
+                                        <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
+                                        {% if player.credit %}
+                                        <div class="mt-1">
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-coins"></i> {{ player.credit }} credit
+                                            </span>
+                                        </div>
+                                        {% endif %}
+                                        {% if player.stats %}
+                                        <div class="mt-1">
+                                            <small>
+                                                <span class="badge bg-success">{{ player.stats.points|default(0)|round(1) }} PTS</span>
+                                                <span class="badge bg-success">{{ player.stats.rebounds|default(0)|round(1) }} REB</span>
+                                                <span class="badge bg-success">{{ player.stats.assists|default(0)|round(1) }} AST</span>
+                                                <span class="badge bg-success">{{ player.stats.steals|default(0)|round(1) }} STL</span>
+                                                <span class="badge bg-success">{{ player.stats.blocks|default(0)|round(1) }} BLK</span>
+                                            </small>
+                                            <br>
+                                            <small>
+                                                <span class="badge bg-success">{{ player.stats.three_pointers_made|default(0)|round(1) }} 3PM</span>
+                                                <span class="badge bg-success">{{ (player.stats.fg_percentage|default(0) * 100)|round(1) }}% FG</span>
+                                                <span class="badge bg-success">{{ (player.stats.ft_percentage|default(0) * 100)|round(1) }}% FT</span>
+                                                <span class="badge bg-success">{{ player.stats.turnovers|default(0)|round(1) }} TO</span>
+                                            </small>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% elif rec.type == 'category_need' %}
+                        <div class="alert alert-info mb-0">
+                            <strong><i class="fas fa-bullseye"></i> Target Category:</strong> <span class="text-uppercase">{{ rec.category }}</span>
+                            {% if rec.suggested_players %}
+                            <div class="mt-2">
+                                <strong>Top Available Players:</strong>
+                                <ul class="mb-0 mt-1">
+                                    {% for player in rec.suggested_players[:3] %}
+                                    <li>
+                                        <strong>{{ player.name }}</strong> ({{ player.team }}) - 
+                                        <span class="badge bg-primary">{{ player.stat_value|round(1) }} {{ rec.category|upper }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-primary" onclick="getMoreDetails('{{ rec.type }}')">
+                                <i class="fas fa-info-circle"></i> View Details
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                        <h4>Your roster looks optimal!</h4>
+                        <p class="text-muted">No significant improvements found at this time.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if recommendations %}
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-users"></i> Current Team ({{ current_roster|length }} players)</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for player in current_roster %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        <strong>{{ player.name }}</strong><br>
+                        <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
+                    </div>
+                    <div class="text-end">
+                        <small>
+                            <span class="badge bg-info">{{ player.stats.points|default(0)|round(1) }} PTS</span>
+                            <span class="badge bg-info">{{ player.stats.rebounds|default(0)|round(1) }} REB</span>
+                            <span class="badge bg-info">{{ player.stats.assists|default(0)|round(1) }} AST</span>
+                        </small><br>
+                        <small class="mt-1">
+                            <span class="badge bg-secondary">{{ player.stats.steals|default(0)|round(1) }} ST</span>
+                            <span class="badge bg-secondary">{{ player.stats.blocks|default(0)|round(1) }} BLK</span>
+                            <span class="badge bg-secondary">{{ player.stats.fg3m|default(0)|round(1) }} 3PM</span>
+                        </small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-info-circle"></i> Analysis Summary</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Season:</strong> {{ season }}</p>
+                <p><strong>Found Recommendations:</strong> {{ recommendations|length }}</p>
+                <p><strong>High Priority:</strong> {{ recommendations|selectattr('priority', 'equalto', 'high')|list|length }}</p>
+                <p><strong>Medium Priority:</strong> {{ recommendations|selectattr('priority', 'equalto', 'medium')|list|length }}</p>
+                <hr>
+                <p><strong><i class="fas fa-coins"></i> Credit Status:</strong></p>
+                <p class="mb-1">Total: {{ total_credit }} / 200</p>
+                <div class="progress mb-2">
+                    <div class="progress-bar {% if total_credit > 180 %}bg-danger{% elif total_credit > 150 %}bg-warning{% else %}bg-success{% endif %}" 
+                         role="progressbar" 
+                         style="width: {{ (total_credit / 200 * 100)|round }}%">
+                        {{ (total_credit / 200 * 100)|round }}%
+                    </div>
+                </div>
+                <p class="mb-0">Remaining: <strong class="{% if remaining_credit < 20 %}text-danger{% elif remaining_credit < 50 %}text-warning{% else %}text-success{% endif %}">{{ remaining_credit }}</strong></p>
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-warning w-100" onclick="refreshRecommendations()">
+                        <i class="fas fa-sync"></i> Refresh Analysis
+                    </button>
+                </div>
+                <div class="mt-2">
+                    <a href="{{ url_for('index') }}" class="btn btn-sm btn-secondary w-100">
+                        <i class="fas fa-home"></i> Back to Home
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="row">
+    <div class="col-12 text-center">
+        <div class="card">
+            <div class="card-body py-5">
+                <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                <h4>Unable to Load Recommendations</h4>
+                <p class="text-muted">Please try again later or check your roster setup.</p>
+                <a href="{{ url_for('index') }}" class="btn btn-primary">
+                    <i class="fas fa-home"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterRecommendations(type) {
+    const cards = document.querySelectorAll('.recommendation-card');
+    const buttons = document.querySelectorAll('.btn-group .btn');
+    
+    // Update button states
+    buttons.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Show/hide cards
+    cards.forEach(card => {
+        if (type === 'all' || card.dataset.type === type) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+function getMoreDetails(type) {
+    // Show detailed analysis modal
+    alert('This feature would show detailed category-by-category impact analysis.');
+}
+
+function refreshRecommendations() {
+    const btn = event.target;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+    btn.disabled = true;
+    
+    setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+        window.location.reload();
+    }, 2000);
+}
+</script>
+
+{% endblock %}

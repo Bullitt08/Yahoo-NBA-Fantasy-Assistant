@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Flask
+instance/
+.webassets-cache
+
+# Environment variables
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+database/*.db
+yahoo_fantasy.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SSL Certificates (keep mkcert.exe for regeneration)
+ssl/*.pem
+ssl/*.key
+
+# Cache
+cache/
+*.cache
+
+# Logs
+*.log
+logs/
+
+# CSV data files
+data/*.csv
+
+# Temporary/Development files
+*_old*.py
+*_backup*.py
+check_*.py
+test_*.py
+convert_*.py
+download_*.py
+download_*.ps1
+fetch_*.py
+fix_*.py
+generate_*.py
+import_*.py
+reimport_*.py
+translate_*.py
+
+# Documentation files (keep main README)
+*_UPDATE.md
+*_FIX.md
+*_GUIDE.md
+*_SUMMARY.md
+*_SETUP.md
+*_OZETI.md
+*_TAMAMLANDI.md
+README_old.md

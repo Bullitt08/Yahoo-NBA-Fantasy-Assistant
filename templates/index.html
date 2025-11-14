@@ -1,0 +1,803 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - NBA Fantasy Assistant{% endblock %}
+
+{% block content %}
+
+<!-- Auto-loaded Team Success Message -->
+{% if session.yahoo_team_name and session.yahoo_my_team_roster and session.yahoo_my_team_roster|length > 0 and session.get('show_yahoo_success') %}
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-success alert-dismissible fade show" role="alert" id="yahooSuccessAlert">
+            <i class="fab fa-yahoo fa-lg me-2"></i>
+            <strong>Team Auto-Loaded!</strong> 
+            Your team <strong>{{ session.yahoo_team_name }}</strong> from <strong>{{ session.yahoo_league_name }}</strong> has been loaded automatically.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" onclick="dismissYahooSuccess()"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+function dismissYahooSuccess() {
+    // Clear success flag from session
+    fetch('/api/clear-yahoo-success', { method: 'POST' })
+        .catch(err => console.error('Error clearing success flag:', err));
+}
+</script>
+{% endif %}
+
+<!-- Yahoo Fantasy Integration Banner -->
+{% if not session.yahoo_authenticated %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-info alert-dismissible fade show" role="alert">
+            <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                    <i class="fab fa-yahoo fa-3x text-warning"></i>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                    <h5 class="alert-heading mb-1">
+                        <i class="fas fa-link"></i> Connect Your Yahoo Fantasy Basketball!
+                    </h5>
+                    <p class="mb-2">
+                        Combine your teams from Yahoo Fantasy leagues with real NBA statistics!
+                    </p>
+                    <a href="{{ url_for('yahoo.yahoo_login') }}" class="btn btn-warning btn-sm">
+                        <i class="fab fa-yahoo"></i> Connect with Yahoo
+                    </a>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Yahoo Connected - Show Leagues -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fab fa-yahoo"></i> My Yahoo Fantasy Leagues
+                </h5>
+                <a href="{{ url_for('yahoo.list_leagues') }}?format=html" class="btn btn-sm btn-dark">
+                    <i class="fas fa-external-link-alt"></i> View All Leagues
+                </a>
+            </div>
+            <div class="card-body" id="yahooLeaguesPreview">
+                <div class="text-center">
+                    <div class="spinner-border text-warning" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mt-2">Loading Yahoo leagues...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadYahooLeaguesPreview();
+});
+
+async function loadYahooLeaguesPreview() {
+    try {
+        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const data = await response.json();
+        
+        const container = document.getElementById('yahooLeaguesPreview');
+        
+        // Check for token expiration
+        if (!data.success && (data.error_code === 'token_expired' || data.error_code === 'not_authenticated')) {
+            container.innerHTML = `
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    Yahoo session expired. Please 
+                    <a href="${data.login_url || '/yahoo/auth/login'}" class="alert-link">reconnect with Yahoo</a>.
+                </div>
+            `;
+            return;
+        }
+        
+        if (data.success && data.leagues && data.leagues.length > 0) {
+            let html = '<div class="row">';
+            data.leagues.slice(0, 3).forEach(league => {
+                html += `
+                    <div class="col-md-4">
+                        <div class="card mb-2">
+                            <div class="card-body">
+                                <h6 class="card-title">${league.name}</h6>
+                                <p class="card-text small text-muted mb-2">
+                                    <span class="badge bg-secondary">${league.num_teams} Teams</span>
+                                    <span class="badge bg-info">Week ${league.current_week}</span>
+                                </p>
+                                <a href="/yahoo/league/${league.league_key}/teams?include_roster=true&format=html" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-users"></i> View Teams
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            if (data.leagues.length > 3) {
+                html += `
+                    <div class="col-12 text-center mt-2">
+                        <a href="/yahoo/leagues?format=html" class="btn btn-sm btn-warning">
+                            <i class="fas fa-plus"></i> ${data.leagues.length - 3} More Leagues
+                        </a>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            container.innerHTML = html;
+        } else if (data.success && data.leagues.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-info-circle"></i> You are not registered in any Yahoo Fantasy league for the 2024-25 season.
+                </div>
+            `;
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Error loading Yahoo leagues:', error);
+        const container = document.getElementById('yahooLeaguesPreview');
+        container.innerHTML = `
+            <div class="alert alert-danger mb-0">
+                <i class="fas fa-exclamation-triangle"></i> 
+                Failed to load Yahoo leagues. 
+                <a href="/yahoo/auth/login" class="alert-link">Try reconnecting</a>.
+            </div>
+        `;
+    }
+}
+</script>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <h1><i class="fas fa-tachometer-alt"></i> NBA Stats Dashboard 
+            <span class="badge bg-info" style="font-size: 0.5em;">{{ stats.current_season }} Season</span>
+        </h1>
+        <p class="text-muted">Real-time statistics from Basketball Reference ({{stats.current_season}} season)</p>
+        <hr>
+    </div>
+</div>
+
+<!-- NBA Stats Overview -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Active Players</h5>
+                        <h2>{{stats.total_players}}</h2>
+                        <small>{{stats.current_season}}</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-users fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Top Scorer</h5>
+                        <h6>{{stats.top_scorers[0].name if stats.top_scorers else 'N/A'}}</h6>
+                        <small>{{stats.top_scorers[0].stats.points|round(1) if stats.top_scorers else 0}} PPG</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-basketball-ball fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Top Rebounder</h5>
+                        <h6>{{stats.top_rebounders[0].name if stats.top_rebounders else 'N/A'}}</h6>
+                        <small>{{stats.top_rebounders[0].stats.rebounds|round(1) if stats.top_rebounders else 0}} RPG</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-chart-bar fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Top Assists</h5>
+                        <h6>{{stats.top_assisters[0].name if stats.top_assisters else 'N/A'}}</h6>
+                        <small>{{stats.top_assisters[0].stats.assists|round(1) if stats.top_assisters else 0}} APG</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-hands-helping fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- My Fantasy Team Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    {% if season == 'yahoo-matchup' and yahoo_matchup_stats %}
+                    <i class="fab fa-yahoo text-warning"></i> Yahoo Matchup - Week {{ yahoo_matchup_stats['week'] }}
+                    <br><small class="mt-1 text-white-50">{{ yahoo_matchup_stats['league_name'] }}</small>
+                    {% elif session.yahoo_team_name %}
+                    {% if session.yahoo_team_logo %}
+                    <img src="{{ session.yahoo_team_logo }}" alt="Team Logo" class="me-2" style="width: 32px; height: 32px; border-radius: 4px; vertical-align: middle;">
+                    {% else %}
+                    <i class="fas fa-users"></i>
+                    {% endif %}
+                    {{ session.yahoo_team_name }}
+                    <br><small class="mt-1 text-white-50">{{ session.yahoo_league_name }}</small>
+                    {% else %}
+                    <i class="fas fa-users"></i> My Fantasy Team
+                    {% endif %}
+                </h5>
+                <div>
+                    <!-- Credit system removed - Yahoo Fantasy manages team composition -->
+                </div>
+            </div>
+            <div id="myTeamContent">
+            {% if not my_roster or my_roster|length == 0 %}
+            <!-- No Team Warning -->
+            <div class="card-body">
+                <div class="alert alert-warning d-flex align-items-center mb-0">
+                    <i class="fas fa-exclamation-circle fa-3x me-3"></i>
+                    <div class="flex-grow-1">
+                        <h5 class="alert-heading mb-1"><i class="fas fa-users-slash"></i> No Players in Your Team</h5>
+                        <p class="mb-2">
+                            {% if session.yahoo_authenticated %}
+                                Your team <strong>{{ session.yahoo_team_name }}</strong> doesn't have any players yet.<br>
+                                Please draft your players on <strong>Yahoo Fantasy Basketball</strong> website.
+                            {% else %}
+                                Connect your Yahoo account to automatically import your team and players.
+                            {% endif %}
+                        </p>
+                        {% if not session.yahoo_authenticated %}
+                        <a href="{{ url_for('yahoo.yahoo_login') }}" class="btn btn-warning btn-sm">
+                            <i class="fab fa-yahoo"></i> Connect Yahoo Account
+                        </a>
+                        {% else %}
+                        <a href="https://basketball.fantasysports.yahoo.com/nba" target="_blank" class="btn btn-warning btn-sm">
+                            <i class="fab fa-yahoo"></i> Go to Yahoo Fantasy to Draft Players
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Player</th>
+                                <th>Pos</th>
+                                <th>Team</th>
+                                <th class="text-center">PTS</th>
+                                <th class="text-center">REB</th>
+                                <th class="text-center">AST</th>
+                                <th class="text-center">STL</th>
+                                <th class="text-center">BLK</th>
+                                <th class="text-center">3PM</th>
+                                <th class="text-center">FG%</th>
+                                <th class="text-center">FT%</th>
+                                <th class="text-center">TO</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for player in my_roster %}
+                            <tr>
+                                <td><strong>{{ loop.index }}</strong></td>
+                                <td><strong>{{ player.name }}</strong></td>
+                                <td><span class="badge bg-info">{{ player.position }}</span></td>
+                                <td>{{ player.team }}</td>
+                                <td class="text-center">{{ player.stats.points|default(0)|round(1) }}</td>
+                                <td class="text-center">{{ player.stats.rebounds|default(0)|round(1) }}</td>
+                                <td class="text-center">{{ player.stats.assists|default(0)|round(1) }}</td>
+                                <td class="text-center">{{ player.stats.steals|default(0)|round(2) }}</td>
+                                <td class="text-center">{{ player.stats.blocks|default(0)|round(2) }}</td>
+                                <td class="text-center">{{ player.stats.three_pointers_made|default(0)|round(1) }}</td>
+                                {% set fg_made = player.stats.get('field_goals', 0) %}
+                                {% set fg_att = player.stats.get('field_goal_attempts', 0) %}
+                                {% set player_fg_pct = (fg_made / fg_att * 100) if fg_att > 0 else 0 %}
+                                <td class="text-center">{{ player_fg_pct|round(1) if player_fg_pct > 0 else '-' }}%</td>
+                                {% set ft_made = player.stats.get('free_throws', 0) %}
+                                {% set ft_att = player.stats.get('free_throw_attempts', 0) %}
+                                {% set player_ft_pct = (ft_made / ft_att * 100) if ft_att > 0 else 0 %}
+                                <td class="text-center">{{ player_ft_pct|round(1) if player_ft_pct > 0 else '-' }}%</td>
+                                <td class="text-center">{{ player.stats.turnovers|default(0)|round(1) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <td colspan="4">
+                                    <strong>
+                                        {% if yahoo_my_team_stats %}
+                                        <i class="fab fa-yahoo text-warning"></i> Yahoo Actual Stats (Week {{ yahoo_current_week or '?' }})
+                                        {% else %}
+                                        Team Totals (Weekly Projection)
+                                        {% endif %}
+                                    </strong>
+                                </td>
+                                {% if yahoo_my_team_stats %}
+                                <!-- Yahoo actual stats -->
+                                <td class="text-center"><strong>{{ yahoo_my_team_stats.get('12', '0') }}</strong></td>
+                                <td class="text-center"><strong>{{ yahoo_my_team_stats.get('15', '0') }}</strong></td>
+                                <td class="text-center"><strong>{{ yahoo_my_team_stats.get('16', '0') }}</strong></td>
+                                <td class="text-center"><strong>{{ yahoo_my_team_stats.get('17', '0') }}</strong></td>
+                                <td class="text-center"><strong>{{ yahoo_my_team_stats.get('18', '0') }}</strong></td>
+                                <td class="text-center"><strong>{{ yahoo_my_team_stats.get('10', '0') }}</strong></td>
+                                <td class="text-center"><strong>{{ (yahoo_my_team_stats.get('5', '0')|float * 100)|round(1) if yahoo_my_team_stats.get('5') else '0' }}%</strong></td>
+                                <td class="text-center"><strong>{{ (yahoo_my_team_stats.get('8', '0')|float * 100)|round(1) if yahoo_my_team_stats.get('8') else '0' }}%</strong></td>
+                                <td class="text-center"><strong>{{ yahoo_my_team_stats.get('19', '0') }}</strong></td>
+                                {% else %}
+                                <!-- Projected stats -->
+                                <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.points')|round(1) }}</strong></td>
+                                <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.rebounds')|round(1) }}</strong></td>
+                                <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.assists')|round(1) }}</strong></td>
+                                <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.steals')|round(2) }}</strong></td>
+                                <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.blocks')|round(2) }}</strong></td>
+                                <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.three_pointers_made')|round(1) }}</strong></td>
+                                {% set total_fg_made = namespace(value=0) %}
+                                {% set total_fg_att = namespace(value=0) %}
+                                {% for p in my_roster %}
+                                    {% set total_fg_made.value = total_fg_made.value + p.stats.get('field_goals', 0) %}
+                                    {% set total_fg_att.value = total_fg_att.value + p.stats.get('field_goal_attempts', 0) %}
+                                {% endfor %}
+                                {% set team_fg_pct = (total_fg_made.value / total_fg_att.value * 100) if total_fg_att.value > 0 else 0 %}
+                                <td class="text-center"><strong>{{ team_fg_pct|round(1) }}%</strong></td>
+                                {% set total_ft_made = namespace(value=0) %}
+                                {% set total_ft_att = namespace(value=0) %}
+                                {% for p in my_roster %}
+                                    {% set total_ft_made.value = total_ft_made.value + p.stats.get('free_throws', 0) %}
+                                    {% set total_ft_att.value = total_ft_att.value + p.stats.get('free_throw_attempts', 0) %}
+                                {% endfor %}
+                                {% set team_ft_pct = (total_ft_made.value / total_ft_att.value * 100) if total_ft_att.value > 0 else 0 %}
+                                <td class="text-center"><strong>{{ team_ft_pct|round(1) }}%</strong></td>
+                                <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.turnovers')|round(1) }}</strong></td>
+                                {% endif %}
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <a href="{{ url_for('matchup_page') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-vs"></i> Go to Matchup Simulator
+                        </a>
+                    </div>
+                    <div class="col-md-6">
+                        <a href="{{ url_for('recommendations_page') }}" class="btn btn-outline-success w-100">
+                            <i class="fas fa-lightbulb"></i> Get Recommendations
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar"></i> Fantasy Tools</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <a href="{{ url_for('draft_page') }}" class="btn btn-outline-primary btn-lg w-100">
+                            <i class="fas fa-chart-line fa-2x"></i><br>
+                            <h6>Draft Assistant</h6>
+                            <small class="text-muted">AI-powered rankings</small>
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <a href="/players" class="btn btn-outline-warning btn-lg w-100">
+                            <i class="fas fa-database fa-2x"></i><br>
+                            <h6>Player Database</h6>
+                            <small class="text-muted">View all players</small>
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <a href="{{ url_for('demo_mode') }}" class="btn btn-outline-secondary btn-lg w-100">
+                            <i class="fas fa-vial fa-2x"></i><br>
+                            <h6>Demo Mode</h6>
+                            <small class="text-muted">Test features</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Players Preview -->
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h6 class="mb-0"><i class="fas fa-trophy"></i> Top Scorers</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for player in stats.top_scorers[:5] %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        <strong>{{loop.index}}. {{player.name}}</strong>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                    </div>
+                    <div class="text-end">
+                        <strong class="text-success">{{player.stats.points|default(0)|round(1)}}</strong>
+                        <br><small class="text-muted">PPG</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Top Rebounders</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for player in stats.top_rebounders[:5] %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        <strong>{{loop.index}}. {{player.name}}</strong>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                    </div>
+                    <div class="text-end">
+                        <strong class="text-info">{{player.stats.rebounds|default(0)|round(1)}}</strong>
+                        <br><small class="text-muted">RPG</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0"><i class="fas fa-hands-helping"></i> Top Assist Leaders</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for player in stats.top_assisters[:5] %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        <strong>{{loop.index}}. {{player.name}}</strong>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                    </div>
+                    <div class="text-end">
+                        <strong class="text-warning">{{player.stats.assists|default(0)|round(1)}}</strong>
+                        <br><small class="text-muted">APG</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Yahoo Team Import Modal -->
+<div class="modal fade" id="yahooTeamImportModal" tabindex="-1" aria-labelledby="yahooTeamImportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="yahooTeamImportModalLabel">
+                    <i class="fab fa-yahoo"></i> Import My Team from Yahoo Fantasy
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="yahooTeamImportBody">
+                <div class="text-center">
+                    <div class="spinner-border text-warning" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading Yahoo leagues...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Yahoo Team Import Functions
+async function loadYahooLeaguesForTeam() {
+    const modalBody = document.getElementById('yahooTeamImportBody');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-warning" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading Yahoo leagues...</p></div>';
+    
+    try {
+        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const data = await response.json();
+        
+        if (data.success && data.leagues && data.leagues.length > 0) {
+            let html = '<div class="alert alert-info"><i class="fas fa-info-circle"></i> Select a league to import your team</div>';
+            html += '<div class="list-group">';
+            data.leagues.forEach(league => {
+                html += `
+                    <a href="javascript:void(0)" class="list-group-item list-group-item-action" onclick="selectYahooLeagueForTeam('${league.league_key}', '${league.name}')">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">${league.name}</h5>
+                            <small class="text-muted">${league.season}</small>
+                        </div>
+                        <p class="mb-1"><i class="fas fa-users"></i> ${league.num_teams || 0} Teams | Week ${league.current_week || 1}</p>
+                    </a>
+                `;
+            });
+            html += '</div>';
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">You are not a member of any Yahoo league.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading Yahoo leagues:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while loading leagues.</div>';
+    }
+}
+
+async function selectYahooLeagueForTeam(leagueKey, leagueName) {
+    const modalBody = document.getElementById('yahooTeamImportBody');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-warning" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading teams...</p></div>';
+    
+    try {
+        const response = await fetch(`/yahoo/league/${leagueKey}/teams?include_roster=true`);
+        const data = await response.json();
+        
+        if (data.teams && data.teams.length > 0) {
+            let html = `
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-secondary" onclick="loadYahooLeaguesForTeam()">
+                        <i class="fas fa-arrow-left"></i> Back to Leagues
+                    </button>
+                </div>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> <strong>${leagueName}</strong> - Select your team to import
+                </div>
+                <div class="row">
+            `;
+            
+            data.teams.forEach(team => {
+                const logo = team.logo_url || 'https://via.placeholder.com/50';
+                const rosterCount = team.roster ? team.roster.length : 0;
+                
+                html += `
+                    <div class="col-md-6 mb-3">
+                        <div class="card hover-shadow" style="cursor: pointer;" onclick="importYahooTeam('${team.team_key}', '${team.name}', ${rosterCount})">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center">
+                                    <img src="${logo}" alt="${team.name}" class="rounded me-3" style="width: 50px; height: 50px; object-fit: cover;">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-0">${team.name}</h6>
+                                        <small class="text-muted">
+                                            <i class="fas fa-user"></i> ${team.managers ? team.managers.join(', ') : 'Unknown'}
+                                        </small>
+                                        <br>
+                                        <span class="badge bg-success mt-1">
+                                            <i class="fas fa-users"></i> ${rosterCount} Players
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <i class="fas fa-download fa-2x text-warning"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-warning">No teams found in this league.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading teams:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while loading teams.</div>';
+    }
+}
+
+async function importYahooTeam(teamKey, teamName, rosterCount) {
+    const modalBody = document.getElementById('yahooTeamImportBody');
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-success" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Importing team...</p></div>';
+    
+    try {
+        const response = await fetch(`/yahoo/team/${teamKey}/roster`);
+        const data = await response.json();
+        
+        if (data.roster && data.roster.length > 0) {
+            // Save team to session
+            await fetch('/api/save-yahoo-my-team', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    team: data.roster.map(p => p.name)
+                })
+            });
+            
+            modalBody.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> <strong>Success!</strong><br>
+                    <strong>${teamName}</strong> has been imported successfully!<br>
+                    <span class="badge bg-success mt-2">${data.roster.length} players</span>
+                </div>
+                <div class="mt-3">
+                    <h6>Imported Players:</h6>
+                    <div class="row">
+                        ${data.roster.map(p => `
+                            <div class="col-md-4 mb-2">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-check-circle text-success me-2"></i>
+                                    <small><strong>${p.name}</strong> (${p.position})</small>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="d-grid mt-3">
+                    <button class="btn btn-primary" onclick="location.reload()">
+                        <i class="fas fa-sync"></i> Refresh Page
+                    </button>
+                </div>
+            `;
+        } else {
+            throw new Error('No roster data found');
+        }
+    } catch (error) {
+        console.error('Error importing team:', error);
+        modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while importing the team.</div>';
+    }
+}
+
+// Initialize modal
+document.addEventListener('DOMContentLoaded', function() {
+    const yahooTeamImportModal = document.getElementById('yahooTeamImportModal');
+    if (yahooTeamImportModal) {
+        yahooTeamImportModal.addEventListener('show.bs.modal', loadYahooLeaguesForTeam);
+    }
+    
+    // Auto-load Yahoo Matchup rosters when in yahoo-matchup mode
+    const urlParams = new URLSearchParams(window.location.search);
+    const season = urlParams.get('season');
+    if (season === 'yahoo-matchup') {
+        console.log('[INDEX] Yahoo Matchup mode detected, checking for rosters...');
+        // Only load if we don't have roster data yet
+        const hasRoster = document.querySelector('#myTeamContent table tbody tr');
+        if (!hasRoster) {
+            console.log('[INDEX] No roster found, loading...');
+            loadYahooMatchupRosters();
+        } else {
+            console.log('[INDEX] Roster already loaded, skipping auto-load');
+        }
+    }
+});
+
+async function loadYahooMatchupRosters() {
+    try {
+        console.log('[INDEX] Loading Yahoo matchup rosters...');
+        
+        // Get user's leagues
+        const leaguesResponse = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const leaguesData = await leaguesResponse.json();
+        
+        if (!leaguesData.success || !leaguesData.leagues || leaguesData.leagues.length === 0) {
+            console.warn('[INDEX] No Yahoo leagues found');
+            return;
+        }
+        
+        const league = leaguesData.leagues[0];
+        const leagueKey = league.league_key;
+        
+        // Get scoreboard
+        const scoreboardResponse = await fetch(`/yahoo/league/${leagueKey}/scoreboard`);
+        const scoreboardData = await scoreboardResponse.json();
+        
+        if (!scoreboardData.success || !scoreboardData.matchups) {
+            console.error('[INDEX] Failed to load scoreboard');
+            return;
+        }
+        
+        // Find first matchup
+        const matchup = scoreboardData.matchups[0];
+        if (!matchup || !matchup.teams || matchup.teams.length < 2) {
+            console.error('[INDEX] Invalid matchup data');
+            return;
+        }
+        
+        console.log('[INDEX] Loading rosters for matchup:', matchup.teams[0].name, 'vs', matchup.teams[1].name);
+        
+        // Load rosters for both teams
+        const team1Key = matchup.teams[0].team_key;
+        const team2Key = matchup.teams[1].team_key;
+        
+        const [roster1Response, roster2Response] = await Promise.all([
+            fetch(`/yahoo/team/${team1Key}/roster`),
+            fetch(`/yahoo/team/${team2Key}/roster`)
+        ]);
+        
+        const roster1Data = await roster1Response.json();
+        const roster2Data = await roster2Response.json();
+        
+        if (!roster1Data.success || !roster2Data.success) {
+            console.error('[INDEX] Failed to load rosters');
+            return;
+        }
+        
+        console.log('[INDEX] Loaded rosters:', roster1Data.roster.length, 'and', roster2Data.roster.length, 'players');
+        
+        // Save both team rosters to session
+        await Promise.all([
+            fetch('/api/save-yahoo-my-team', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    team_name: matchup.teams[0].name,
+                    roster: roster1Data.roster
+                })
+            }),
+            fetch('/api/save-yahoo-opponent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    team_name: matchup.teams[1].name,
+                    roster: roster2Data.roster
+                })
+            })
+        ]);
+        
+        // Save matchup data to session
+        await fetch('/yahoo/api/save-yahoo-matchup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                matchup: matchup,
+                league_name: scoreboardData.league_name || leagueKey,
+                week: scoreboardData.week
+            })
+        });
+        
+        console.log('[INDEX] Matchup data and rosters saved, reloading...');
+        // Reload page to display rosters
+        window.location.reload();
+        
+    } catch (error) {
+        console.error('[INDEX] Error loading Yahoo matchup rosters:', error);
+    }
+}
+</script>
+
+{% endblock %}

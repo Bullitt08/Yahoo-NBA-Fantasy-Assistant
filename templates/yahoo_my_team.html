@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block title %}Takımım - {{ team_name }} - NBA Fantasy Assistant{% endblock %}
+
+{% block content %}
+
+<div class="row mb-3">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('yahoo.list_leagues') }}?format=html">Liglerim</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('yahoo.league_teams', league_key=league_key) }}?format=html">{{ league_name }}</a></li>
+                <li class="breadcrumb-item active">{{ team_name }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-users"></i> {{ team_name }}
+                    </h4>
+                    <div>
+                        <span class="badge bg-light text-dark">{{ roster|length }} Oyuncu</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center">
+                        <h3 class="text-success">{{ wins }}</h3>
+                        <small class="text-muted">Galbiyet</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="text-danger">{{ losses }}</h3>
+                        <small class="text-muted">Mağlubiyet</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="text-info">{{ standing }}</h3>
+                        <small class="text-muted">Sıralama</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="text-warning">{{ waiver_priority }}</h3>
+                        <small class="text-muted">Waiver Priority</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs Navigation -->
+<ul class="nav nav-tabs mb-3" id="leagueTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="my-team-tab" data-bs-toggle="tab" data-bs-target="#my-team" type="button" role="tab">
+            <i class="fas fa-users"></i> Takımım
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="standings-tab" data-bs-toggle="tab" data-bs-target="#standings" type="button" role="tab" onclick="loadStandings()">
+            <i class="fas fa-trophy"></i> Sıralama
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="free-agents-tab" data-bs-toggle="tab" data-bs-target="#free-agents" type="button" role="tab" onclick="loadFreeAgents()">
+            <i class="fas fa-user-plus"></i> Serbest Oyuncular
+        </button>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="leagueTabsContent">
+    <!-- My Team Tab -->
+    <div class="tab-pane fade show active" id="my-team" role="tabpanel">
+        <!-- Roster with NBA Stats -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-basketball-ball"></i> Kadro & NBA İstatistikleri</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Oyuncu</th>
+                                        <th>Pos</th>
+                                        <th>NBA Takım</th>
+                                        <th>PTS</th>
+                                        <th>REB</th>
+                                        <th>AST</th>
+                                        <th>STL</th>
+                                        <th>BLK</th>
+                                        <th>3PM</th>
+                                        <th>FG%</th>
+                                        <th>FT%</th>
+                                        <th>TO</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for player in roster %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ player.player_name }}</strong>
+                                            {% if player.is_undroppable %}
+                                            <span class="badge bg-warning text-dark" title="Undroppable">
+                                                <i class="fas fa-lock"></i>
+                                            </span>
+                                            {% endif %}
+                                        </td>
+                                        <td><span class="badge bg-info">{{ player.position }}</span></td>
+                                        <td>{{ player.nba_team }}</td>
+                                        <td>{{ player.stats.ppg|round(1) if player.stats.ppg else '-' }}</td>
+                                        <td>{{ player.stats.rpg|round(1) if player.stats.rpg else '-' }}</td>
+                                        <td>{{ player.stats.apg|round(1) if player.stats.apg else '-' }}</td>
+                                        <td>{{ player.stats.spg|round(2) if player.stats.spg else '-' }}</td>
+                                        <td>{{ player.stats.bpg|round(2) if player.stats.bpg else '-' }}</td>
+                                        <td>{{ player.stats.tpg|round(1) if player.stats.tpg else '-' }}</td>
+                                        <td>{{ (player.stats.fg_pct * 100)|round(1) if player.stats.fg_pct else '-' }}%</td>
+                                        <td>{{ (player.stats.ft_pct * 100)|round(1) if player.stats.ft_pct else '-' }}%</td>
+                                        <td>{{ player.stats.tov|round(1) if player.stats.tov else '-' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    
+    <!-- Standings Tab -->
+    <div class="tab-pane fade" id="standings" role="tabpanel">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-trophy"></i> Lig Sıralaması</h5>
+            </div>
+            <div class="card-body" id="standingsContent">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mt-2">Sıralama yükleniyor...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Free Agents Tab -->
+    <div class="tab-pane fade" id="free-agents" role="tabpanel">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-user-plus"></i> Serbest Oyuncular</h5>
+                    <div>
+                        <select class="form-select form-select-sm" id="positionFilter" onchange="filterFreeAgents()">
+                            <option value="">Tüm Pozisyonlar</option>
+                            <option value="PG">PG</option>
+                            <option value="SG">SG</option>
+                            <option value="SF">SF</option>
+                            <option value="PF">PF</option>
+                            <option value="C">C</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body" id="freeAgentsContent">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mt-2">Serbest oyuncular yükleniyor...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div><!-- Actions -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-tools"></i> Takım Araçları</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <a href="{{ url_for('draft_page') }}?yahoo_team={{ team_key }}" class="btn btn-outline-primary btn-lg w-100">
+                            <i class="fas fa-chart-line fa-2x"></i><br>
+                            <h6>Draft Önerileri</h6>
+                            <small class="text-muted">Bu kadro için</small>
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <a href="#" class="btn btn-outline-success btn-lg w-100" onclick="startMatchup()">
+                            <i class="fas fa-vs fa-2x"></i><br>
+                            <h6>Matchup Simülasyonu</h6>
+                            <small class="text-muted">Rakip seç</small>
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <a href="#" class="btn btn-outline-info btn-lg w-100" onclick="getRecommendations()">
+                            <i class="fas fa-lightbulb fa-2x"></i><br>
+                            <h6>Kadro Önerileri</h6>
+                            <small class="text-muted">Serbest oyuncu analizi</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const rosterData = {{ roster|tojson|safe }};
+const leagueKey = '{{ league_key }}';
+let freeAgentsData = [];
+
+// Check URL parameter for tab activation
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    
+    if (tab === 'standings') {
+        // Activate standings tab
+        document.getElementById('standings-tab').click();
+    } else if (tab === 'free-agents') {
+        // Activate free agents tab
+        document.getElementById('free-agents-tab').click();
+    }
+});
+
+function startMatchup() {
+    // Save current team to session and redirect to matchup page
+    const playerNames = rosterData.map(p => p.player_name);
+    
+    fetch('/api/save-team', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({team: playerNames})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = '{{ url_for("matchup_page") }}';
+        }
+    });
+}
+
+function getRecommendations() {
+    // Save current team and redirect to recommendations
+    const playerNames = rosterData.map(p => p.player_name);
+    
+    fetch('/api/save-team', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({team: playerNames})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = '{{ url_for("recommendations_page") }}';
+        }
+    });
+}
+
+// Load Standings
+let standingsLoaded = false;
+async function loadStandings() {
+    if (standingsLoaded) return;
+    
+    const container = document.getElementById('standingsContent');
+    container.innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted mt-2">Sıralama yükleniyor...</p>
+        </div>
+    `;
+    
+    try {
+        const response = await fetch(`/yahoo/league/${leagueKey}/standings`);
+        const data = await response.json();
+        
+        if (data.success && data.teams) {
+            let html = `
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Sıra</th>
+                                <th>Takım</th>
+                                <th class="text-center">G</th>
+                                <th class="text-center">M</th>
+                                <th class="text-center">B</th>
+                                <th class="text-center">Puan</th>
+                                <th class="text-center">GB</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.teams.forEach((team, index) => {
+                const isMyTeam = team.team_name === '{{ team_name }}';
+                const rowClass = isMyTeam ? 'table-primary' : '';
+                html += `
+                    <tr class="${rowClass}">
+                        <td><strong>${index + 1}</strong></td>
+                        <td>
+                            <strong>${team.team_name}</strong>
+                            ${isMyTeam ? '<span class="badge bg-primary ms-2">Sizin Takım</span>' : ''}
+                        </td>
+                        <td class="text-center text-success">${team.wins || 0}</td>
+                        <td class="text-center text-danger">${team.losses || 0}</td>
+                        <td class="text-center text-info">${team.ties || 0}</td>
+                        <td class="text-center"><strong>${team.points || 0}</strong></td>
+                        <td class="text-center text-muted">${team.games_back || '-'}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+            standingsLoaded = true;
+        } else {
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i> Sıralama bilgisi yüklenemedi.
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading standings:', error);
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-times-circle"></i> Bir hata oluştu: ${error.message}
+            </div>
+        `;
+    }
+}
+
+// Load Free Agents
+let freeAgentsLoaded = false;
+async function loadFreeAgents() {
+    if (freeAgentsLoaded) return;
+    
+    const container = document.getElementById('freeAgentsContent');
+    container.innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted mt-2">Serbest oyuncular yükleniyor...</p>
+        </div>
+    `;
+    
+    try {
+        const response = await fetch(`/yahoo/league/${leagueKey}/free_agents`);
+        const data = await response.json();
+        
+        if (data.success && data.players) {
+            freeAgentsData = data.players;
+            renderFreeAgents(freeAgentsData);
+            freeAgentsLoaded = true;
+        } else {
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i> Serbest oyuncu bilgisi yüklenemedi.
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading free agents:', error);
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-times-circle"></i> Bir hata oluştu: ${error.message}
+            </div>
+        `;
+    }
+}
+
+function renderFreeAgents(players) {
+    const container = document.getElementById('freeAgentsContent');
+    
+    if (!players || players.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> Serbest oyuncu bulunamadı.
+            </div>
+        `;
+        return;
+    }
+    
+    let html = `
+        <div class="alert alert-info alert-sm mb-3">
+            <i class="fas fa-info-circle"></i> Toplam ${players.length} serbest oyuncu bulundu
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th>Oyuncu</th>
+                        <th>Pos</th>
+                        <th>NBA Takım</th>
+                        <th class="text-center">PTS</th>
+                        <th class="text-center">REB</th>
+                        <th class="text-center">AST</th>
+                        <th class="text-center">STL</th>
+                        <th class="text-center">BLK</th>
+                        <th class="text-center">3PM</th>
+                        <th class="text-center">FG%</th>
+                        <th class="text-center">FT%</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    players.slice(0, 50).forEach(player => {
+        html += `
+            <tr>
+                <td><strong>${player.player_name}</strong></td>
+                <td><span class="badge bg-info">${player.position || '-'}</span></td>
+                <td>${player.nba_team || '-'}</td>
+                <td class="text-center">${player.stats?.ppg ? player.stats.ppg.toFixed(1) : '-'}</td>
+                <td class="text-center">${player.stats?.rpg ? player.stats.rpg.toFixed(1) : '-'}</td>
+                <td class="text-center">${player.stats?.apg ? player.stats.apg.toFixed(1) : '-'}</td>
+                <td class="text-center">${player.stats?.spg ? player.stats.spg.toFixed(2) : '-'}</td>
+                <td class="text-center">${player.stats?.bpg ? player.stats.bpg.toFixed(2) : '-'}</td>
+                <td class="text-center">${player.stats?.tpg ? player.stats.tpg.toFixed(1) : '-'}</td>
+                <td class="text-center">${player.stats?.fg_pct ? (player.stats.fg_pct * 100).toFixed(1) + '%' : '-'}</td>
+                <td class="text-center">${player.stats?.ft_pct ? (player.stats.ft_pct * 100).toFixed(1) + '%' : '-'}</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    if (players.length > 50) {
+        html += `
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-info-circle"></i> İlk 50 oyuncu gösteriliyor. Toplam: ${players.length}
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+function filterFreeAgents() {
+    const position = document.getElementById('positionFilter').value;
+    
+    if (!position) {
+        renderFreeAgents(freeAgentsData);
+        return;
+    }
+    
+    const filtered = freeAgentsData.filter(p => 
+        p.position && p.position.includes(position)
+    );
+    
+    renderFreeAgents(filtered);
+}
+
+</script>
+{% endblock %}

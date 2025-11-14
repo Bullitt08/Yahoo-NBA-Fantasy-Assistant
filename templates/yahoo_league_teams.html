@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+
+{% block title %}{{ league_name }} - Teams{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('yahoo.list_leagues') }}?format=html">Yahoo Leagues</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ league_name }}</li>
+                </ol>
+            </nav>
+            
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="display-5">
+                        <i class="fab fa-yahoo text-warning me-2"></i>
+                        {{ league_name }}
+                    </h1>
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-trophy"></i> League Key: {{ league_key }}
+                        <span class="mx-2">|</span>
+                        <i class="bi bi-people"></i> {{ teams|length }} Teams
+                    </p>
+                </div>
+                <div>
+                    <a href="{{ url_for('yahoo.list_leagues') }}?format=html" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Leagues
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ teams|length }}</h3>
+                    <small>Total Teams</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ teams|selectattr('roster')|list|length }}</h3>
+                    <small>Teams with Roster</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">
+                        {% set total_players = teams|map(attribute='roster')|select|map('length')|sum %}
+                        {{ total_players }}
+                    </h3>
+                    <small>Total Players</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">
+                        {% if teams|length > 0 %}
+                            {{ (total_players / teams|length)|round(1) }}
+                        {% else %}
+                            0
+                        {% endif %}
+                    </h3>
+                    <small>Avg Players/Team</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Options -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="btn-group" role="group" aria-label="View options">
+                <button type="button" class="btn btn-outline-primary active" onclick="switchView('grid')">
+                    <i class="bi bi-grid-3x3-gap"></i> Grid View
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="switchView('list')">
+                    <i class="bi bi-list-ul"></i> List View
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="switchView('table')">
+                    <i class="bi bi-table"></i> Table View
+                </button>
+            </div>
+            
+            <div class="float-end">
+                <div class="input-group" style="width: 300px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="searchTeam" placeholder="Search teams or managers..." onkeyup="filterTeams()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grid View (Default) -->
+    <div id="gridView" class="row">
+        {% for team in teams %}
+        <div class="col-lg-6 col-xl-4 mb-4 team-card" data-team-name="{{ team.name|lower }}" data-managers="{{ team.managers|join(' ')|lower if team.managers else '' }}">
+            <div class="card h-100 shadow-sm hover-lift">
+                <!-- Team Header -->
+                <div class="card-header bg-gradient-primary text-white">
+                    <div class="d-flex align-items-center">
+                        {% if team.logo_url %}
+                        <img src="{{ team.logo_url }}" alt="{{ team.name }}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover; border: 2px solid white;">
+                        {% else %}
+                        <div class="rounded-circle me-3 bg-white text-primary d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; font-size: 24px; font-weight: bold;">
+                            {{ team.name[0]|upper }}
+                        </div>
+                        {% endif %}
+                        <div class="flex-grow-1">
+                            <h5 class="card-title mb-0">{{ team.name }}</h5>
+                            <small class="opacity-75">
+                                <i class="bi bi-person"></i> 
+                                {% if team.managers %}
+                                    {{ team.managers|join(', ') }}
+                                {% else %}
+                                    Unknown Manager
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Team Stats -->
+                <div class="card-body">
+                    <div class="row text-center mb-3">
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <h4 class="mb-0 text-primary">{{ team.roster|length if team.roster else 0 }}</h4>
+                                <small class="text-muted">Players</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <h4 class="mb-0 text-success">
+                                    {{ team.wins|default(0) }}-{{ team.losses|default(0) }}
+                                </h4>
+                                <small class="text-muted">W-L</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <h4 class="mb-0 text-info">
+                                    {% if team.standing %}#{{ team.standing }}{% else %}-{% endif %}
+                                </h4>
+                                <small class="text-muted">Rank</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if team.roster and team.roster|length > 0 %}
+                    <!-- Top 5 Players Preview -->
+                    <div class="mb-3">
+                        <h6 class="text-muted mb-2"><i class="bi bi-star-fill text-warning"></i> Top Players:</h6>
+                        <div class="list-group list-group-flush">
+                            {% for player in team.roster[:5] %}
+                            <div class="list-group-item px-0 py-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong class="d-block">{{ player.player_name }}</strong>
+                                        <small class="text-muted">
+                                            {{ player.nba_team }} - {{ player.position }}
+                                            {% if player.stats and player.stats.ppg %}
+                                            | {{ player.stats.ppg|round(1) }} PPG
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                    {% if player.stats and player.stats.ppg %}
+                                    <span class="badge bg-primary">{{ player.stats.ppg|round(1) }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                            {% if team.roster|length > 5 %}
+                            <div class="list-group-item px-0 py-2 text-center">
+                                <small class="text-muted">+ {{ team.roster|length - 5 }} more players</small>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-light text-center mb-3">
+                        <i class="bi bi-inbox text-muted"></i>
+                        <p class="mb-0 text-muted small">No roster available</p>
+                    </div>
+                    {% endif %}
+
+                    <!-- Actions -->
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#teamModal{{ loop.index }}">
+                            <i class="bi bi-eye"></i> View Full Roster
+                        </button>
+                        <a href="{{ url_for('yahoo.team_roster', team_key=team.team_key) }}" class="btn btn-outline-success btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Team Details (Standings, Free Agents)
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Team Footer -->
+                <div class="card-footer bg-light">
+                    <small class="text-muted">
+                        <i class="bi bi-key"></i> {{ team.team_key }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Team Roster Modal -->
+        <div class="modal fade" id="teamModal{{ loop.index }}" tabindex="-1" aria-labelledby="teamModalLabel{{ loop.index }}" aria-hidden="true">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="teamModalLabel{{ loop.index }}">
+                            <i class="bi bi-people-fill"></i> {{ team.name }} - Full Roster
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        {% if team.roster and team.roster|length > 0 %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-striped">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Player Name</th>
+                                        <th>Position</th>
+                                        <th>NBA Team</th>
+                                        <th class="text-center">PTS</th>
+                                        <th class="text-center">REB</th>
+                                        <th class="text-center">AST</th>
+                                        <th class="text-center">STL</th>
+                                        <th class="text-center">BLK</th>
+                                        <th class="text-center">FG%</th>
+                                        <th class="text-center">FT%</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for player in team.roster %}
+                                    <tr>
+                                        <td>{{ loop.index }}</td>
+                                        <td><strong>{{ player.player_name }}</strong></td>
+                                        <td><span class="badge bg-info">{{ player.position }}</span></td>
+                                        <td>{{ player.nba_team }}</td>
+                                        <td class="text-center">{{ player.stats.ppg|round(1) if player.stats and player.stats.ppg else '-' }}</td>
+                                        <td class="text-center">{{ player.stats.rpg|round(1) if player.stats and player.stats.rpg else '-' }}</td>
+                                        <td class="text-center">{{ player.stats.apg|round(1) if player.stats and player.stats.apg else '-' }}</td>
+                                        <td class="text-center">{{ player.stats.spg|round(1) if player.stats and player.stats.spg else '-' }}</td>
+                                        <td class="text-center">{{ player.stats.bpg|round(1) if player.stats and player.stats.bpg else '-' }}</td>
+                                        <td class="text-center">{{ (player.stats.fg_pct * 100)|round(1) if player.stats and player.stats.fg_pct else '-' }}%</td>
+                                        <td class="text-center">{{ (player.stats.ft_pct * 100)|round(1) if player.stats and player.stats.ft_pct else '-' }}%</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> No roster data available for this team.
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" onclick="exportTeamData('{{ team.name }}', {{ team.roster|tojson|safe if team.roster else '[]' }})">
+                            <i class="bi bi-download"></i> Export CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- List View (Hidden by default) -->
+    <div id="listView" class="d-none">
+        {% for team in teams %}
+        <div class="card mb-3 team-card" data-team-name="{{ team.name|lower }}" data-managers="{{ team.managers|join(' ')|lower if team.managers else '' }}">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-2 text-center">
+                        {% if team.logo_url %}
+                        <img src="{{ team.logo_url }}" alt="{{ team.name }}" class="rounded-circle" style="width: 80px; height: 80px; object-fit: cover;">
+                        {% else %}
+                        <div class="rounded-circle mx-auto bg-primary text-white d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; font-size: 36px; font-weight: bold;">
+                            {{ team.name[0]|upper }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <h4 class="mb-1">{{ team.name }}</h4>
+                        <p class="text-muted mb-0">
+                            <i class="bi bi-person"></i> 
+                            {% if team.managers %}
+                                {{ team.managers|join(', ') }}
+                            {% else %}
+                                Unknown Manager
+                            {% endif %}
+                        </p>
+                        <small class="text-muted">{{ team.team_key }}</small>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <h5 class="mb-0 text-primary">{{ team.roster|length if team.roster else 0 }}</h5>
+                                <small class="text-muted">Players</small>
+                            </div>
+                            <div class="col-4">
+                                <h5 class="mb-0 text-success">{{ team.wins|default(0) }}-{{ team.losses|default(0) }}</h5>
+                                <small class="text-muted">Record</small>
+                            </div>
+                            <div class="col-4">
+                                <h5 class="mb-0 text-info">{% if team.standing %}#{{ team.standing }}{% else %}-{% endif %}</h5>
+                                <small class="text-muted">Rank</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#teamModal{{ loop.index }}">
+                            <i class="bi bi-eye"></i> View Roster
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Table View (Hidden by default) -->
+    <div id="tableView" class="d-none">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Rank</th>
+                                <th>Team</th>
+                                <th>Manager</th>
+                                <th class="text-center">Players</th>
+                                <th class="text-center">W-L</th>
+                                <th class="text-center">Win %</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for team in teams %}
+                            <tr class="team-card" data-team-name="{{ team.name|lower }}" data-managers="{{ team.managers|join(' ')|lower if team.managers else '' }}">
+                                <td>{% if team.standing %}#{{ team.standing }}{% else %}-{% endif %}</td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        {% if team.logo_url %}
+                                        <img src="{{ team.logo_url }}" alt="{{ team.name }}" class="rounded-circle me-2" style="width: 40px; height: 40px; object-fit: cover;">
+                                        {% endif %}
+                                        <strong>{{ team.name }}</strong>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if team.managers %}
+                                        {{ team.managers|join(', ') }}
+                                    {% else %}
+                                        Unknown
+                                    {% endif %}
+                                </td>
+                                <td class="text-center"><span class="badge bg-primary">{{ team.roster|length if team.roster else 0 }}</span></td>
+                                <td class="text-center">{{ team.wins|default(0) }}-{{ team.losses|default(0) }}</td>
+                                <td class="text-center">
+                                    {% set total_games = (team.wins|default(0) + team.losses|default(0)) %}
+                                    {% if total_games > 0 %}
+                                        {{ ((team.wins|default(0) / total_games) * 100)|round(1) }}%
+                                    {% else %}
+                                        -%
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#teamModal{{ loop.index }}">
+                                        <i class="bi bi-eye"></i> View
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.bg-gradient-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.hover-lift {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15) !important;
+}
+
+.stat-box {
+    padding: 10px;
+    border-radius: 8px;
+    background: #f8f9fa;
+}
+
+.stat-box h4 {
+    font-weight: 700;
+}
+
+.list-group-item {
+    border: none;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.list-group-item:last-child {
+    border-bottom: none;
+}
+</style>
+
+<script>
+function switchView(view) {
+    // Hide all views
+    document.getElementById('gridView').classList.add('d-none');
+    document.getElementById('listView').classList.add('d-none');
+    document.getElementById('tableView').classList.add('d-none');
+    
+    // Show selected view
+    if (view === 'grid') {
+        document.getElementById('gridView').classList.remove('d-none');
+    } else if (view === 'list') {
+        document.getElementById('listView').classList.remove('d-none');
+    } else if (view === 'table') {
+        document.getElementById('tableView').classList.remove('d-none');
+    }
+    
+    // Update active button
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.closest('.btn').classList.add('active');
+}
+
+function filterTeams() {
+    const searchTerm = document.getElementById('searchTeam').value.toLowerCase();
+    const teamCards = document.querySelectorAll('.team-card');
+    
+    teamCards.forEach(card => {
+        const teamName = card.dataset.teamName || '';
+        const managers = card.dataset.managers || '';
+        
+        if (teamName.includes(searchTerm) || managers.includes(searchTerm)) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+function exportTeamData(teamName, roster) {
+    if (!roster || roster.length === 0) {
+        alert('No roster data to export');
+        return;
+    }
+    
+    // Create CSV content
+    let csv = 'Player Name,Position,NBA Team,PTS,REB,AST,STL,BLK,FG%,FT%\n';
+    
+    roster.forEach(player => {
+        const stats = player.stats || {};
+        csv += `"${player.player_name}",`;
+        csv += `"${player.position}",`;
+        csv += `"${player.nba_team}",`;
+        csv += `${stats.ppg || 0},`;
+        csv += `${stats.rpg || 0},`;
+        csv += `${stats.apg || 0},`;
+        csv += `${stats.spg || 0},`;
+        csv += `${stats.bpg || 0},`;
+        csv += `${stats.fg_pct ? (stats.fg_pct * 100).toFixed(1) : 0},`;
+        csv += `${stats.ft_pct ? (stats.ft_pct * 100).toFixed(1) : 0}\n`;
+    });
+    
+    // Download CSV
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${teamName.replace(/\s+/g, '_')}_roster.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

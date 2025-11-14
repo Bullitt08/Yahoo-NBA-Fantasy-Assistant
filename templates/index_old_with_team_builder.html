@@ -1,0 +1,1257 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - NBA Fantasy Assistant{% endblock %}
+
+{% block content %}
+
+<!-- Yahoo Fantasy Integration Banner -->
+{% if not session.yahoo_authenticated %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-info alert-dismissible fade show" role="alert">
+            <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                    <i class="fab fa-yahoo fa-3x text-warning"></i>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                    <h5 class="alert-heading mb-1">
+                        <i class="fas fa-link"></i> Yahoo Fantasy Basketball'u Bağlayın!
+                    </h5>
+                    <p class="mb-2">
+                        Yahoo Fantasy liglerinizdeki takımlarınızı, oyuncularınızı ve sıralamalarınızı gerçek NBA istatistikleriyle birleştirin. 
+                        Kadronuza özel analizler, draft önerileri ve serbest oyuncu karşılaştırmaları yapın!
+                    </p>
+                    <a href="{{ url_for('yahoo.yahoo_login') }}" class="btn btn-warning btn-sm">
+                        <i class="fab fa-yahoo"></i> Yahoo ile Bağlan
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-2" data-bs-toggle="collapse" data-bs-target="#yahooFeatures">
+                        <i class="fas fa-info-circle"></i> Özellikler
+                    </button>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            
+            <!-- Collapsible Features -->
+            <div class="collapse mt-3" id="yahooFeatures">
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-check-circle text-success"></i> Neler Yapabilirsiniz?</h6>
+                        <ul class="small">
+                            <li>Tüm Yahoo liglerini tek yerden görün</li>
+                            <li>Takım kadrolarını NBA stats ile birlikte analiz edin</li>
+                            <li>Serbest oyuncuları ownership % ile karşılaştırın</li>
+                            <li>Lig sıralamalarını ve maç sonuçlarını takip edin</li>
+                            <li>Yahoo kadronuz için özel draft önerileri alın</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-shield-alt text-primary"></i> Güvenli ve Kolay</h6>
+                        <ul class="small">
+                            <li>OAuth 2.0 ile güvenli Yahoo girişi</li>
+                            <li>Sadece okuma yetkisi (değişiklik yapılmaz)</li>
+                            <li>Verileriniz güvenle şifrelenir</li>
+                            <li>İstediğiniz zaman bağlantıyı kesebilirsiniz</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Yahoo Connected - Show Leagues Quick Access -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fab fa-yahoo"></i> Yahoo Fantasy Liglerimi Gör
+                </h5>
+                <a href="{{ url_for('yahoo.list_leagues') }}?format=html" class="btn btn-sm btn-dark">
+                    <i class="fas fa-external-link-alt"></i> Liglere Git
+                </a>
+            </div>
+            <div class="card-body" id="yahooLeaguesPreview">
+                <div class="text-center">
+                    <div class="spinner-border text-warning" role="status">
+                        <span class="visually-hidden">Yükleniyor...</span>
+                    </div>
+                    <p class="text-muted mt-2">Yahoo ligleri yükleniyor...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load Yahoo leagues preview on page load (if authenticated)
+document.addEventListener('DOMContentLoaded', function() {
+    loadYahooLeaguesPreview();
+});
+
+async function loadYahooLeaguesPreview() {
+    try {
+        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        const data = await response.json();
+        
+        const container = document.getElementById('yahooLeaguesPreview');
+        
+        if (data.success && data.leagues && data.leagues.length > 0) {
+            let html = '<div class="row">';
+            data.leagues.forEach((league, index) => {
+                if (index < 3) { // Show max 3 leagues
+                    html += `
+                        <div class="col-md-4">
+                            <div class="card mb-2">
+                                <div class="card-body">
+                                    <h6 class="card-title">${league.name}</h6>
+                                    <p class="card-text small text-muted mb-2">
+                                        <span class="badge bg-secondary">${league.num_teams} Takım</span>
+                                        <span class="badge bg-info">Hafta ${league.current_week}</span>
+                                    </p>
+                                    <a href="/yahoo/league/${league.league_key}/teams?include_roster=true&format=html" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-users"></i> Takımları Gör
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            
+            if (data.leagues.length > 3) {
+                html += `
+                    <div class="col-12 text-center mt-2">
+                        <a href="/yahoo/leagues?format=html" class="btn btn-sm btn-warning">
+                            <i class="fas fa-plus"></i> ${data.leagues.length - 3} Lig Daha Görüntüle
+                        </a>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            container.innerHTML = html;
+        } else if (data.success && data.leagues.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-info-circle"></i> 2024-25 sezonunda Yahoo Fantasy ligine kayıtlı değilsiniz.
+                    <a href="https://basketball.fantasysports.yahoo.com/" target="_blank" class="alert-link">Yahoo Fantasy Basketball</a>'da bir lige katılın!
+                </div>
+            `;
+        } else {
+            throw new Error(data.error || 'Bilinmeyen hata');
+        }
+    } catch (error) {
+        const container = document.getElementById('yahooLeaguesPreview');
+        container.innerHTML = `
+            <div class="alert alert-danger mb-0">
+                <i class="fas fa-exclamation-triangle"></i> Yahoo ligleri yüklenemedi: ${error.message}
+                <br><small class="text-muted">Yahoo API kimlik doğrulamanızın süresi dolmuş olabilir. Lütfen <a href="{{ url_for('yahoo.yahoo_login') }}">tekrar giriş yapın</a>.</small>
+            </div>
+        `;
+    }
+}
+</script>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <h1><i class="fas fa-tachometer-alt"></i> NBA Stats Dashboard</h1>
+        <p class="text-muted">Real-time statistics from Basketball Reference ({{stats.current_season}} season)</p>
+        <hr>
+    </div>
+</div>
+
+<!-- Credit Budget Display -->
+{% if my_team and my_team|length > 0 %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="fas fa-wallet"></i> Takımınız ve Kredi Bütçesi</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <h3 class="text-primary">{{ my_team|length }}</h3>
+                        <small class="text-muted">Oyuncu Sayısı</small>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <h3 class="{% if total_credit|default(0) > 180 %}text-danger{% elif total_credit|default(0) > 150 %}text-warning{% else %}text-success{% endif %}">
+                            {{ total_credit|default(0) }}
+                        </h3>
+                        <small class="text-muted">Kullanılan Kredi</small>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <h3 class="text-success">{{ remaining_credit|default(200) }}</h3>
+                        <small class="text-muted">Kalan Kredi / 200</small>
+                    </div>
+                </div>
+                <div class="progress mt-3" style="height: 30px;">
+                    <div class="progress-bar {% if total_credit|default(0) > 180 %}bg-danger{% elif total_credit|default(0) > 150 %}bg-warning{% else %}bg-success{% endif %}" 
+                         role="progressbar" 
+                         style="width: {{ ((total_credit|default(0) / 200) * 100)|round }}%"
+                         aria-valuenow="{{ total_credit|default(0) }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="200">
+                        <strong>{{ total_credit|default(0) }} / 200 Kredi</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- NBA Stats Overview -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Active Players</h5>
+                        <h2>{{stats.total_players}}</h2>
+                        <small>{{stats.current_season}}</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-users fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Top Scorer</h5>
+                        <h6>{{stats.top_scorers[0].name if stats.top_scorers else 'N/A'}}</h6>
+                        <small>{{stats.top_scorers[0].stats.points|round(1) if stats.top_scorers else 0}} PPG</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-basketball-ball fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Top Rebounder</h5>
+                        <h6>{{stats.top_rebounders[0].name if stats.top_rebounders else 'N/A'}}</h6>
+                        <small>{{stats.top_rebounders[0].stats.rebounds|round(1) if stats.top_rebounders else 0}} RPG</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-chart-bar fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">Top Assists</h5>
+                        <h6>{{stats.top_assisters[0].name if stats.top_assisters else 'N/A'}}</h6>
+                        <small>{{stats.top_assisters[0].stats.assists|round(1) if stats.top_assisters else 0}} APG</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-hands-helping fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar"></i> Fantasy Tools</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <a href="{{ url_for('draft_page') }}" class="btn btn-outline-primary btn-lg w-100">
+                            <i class="fas fa-chart-line fa-2x"></i><br>
+                            <h6>Draft Assistant</h6>
+                            <small class="text-muted">AI-powered rankings</small>
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <a href="/players" class="btn btn-outline-warning btn-lg w-100">
+                            <i class="fas fa-database fa-2x"></i><br>
+                            <h6>Player Database</h6>
+                            <small class="text-muted">View all players</small>
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <a href="{{ url_for('demo_mode') }}" class="btn btn-outline-secondary btn-lg w-100">
+                            <i class="fas fa-vial fa-2x"></i><br>
+                            <h6>Demo Mode</h6>
+                            <small class="text-muted">Test features</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Players Preview -->
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h6 class="mb-0"><i class="fas fa-trophy"></i> Top Scorers</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for player in stats.top_scorers[:5] %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        <strong>{{loop.index}}. {{player.name}}</strong>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                    </div>
+                    <div class="text-end">
+                        <strong class="text-success">{{player.stats.points|default(0)|round(1)}}</strong>
+                        <br><small class="text-muted">PPG</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Top Rebounders</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for player in stats.top_rebounders[:5] %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        <strong>{{loop.index}}. {{player.name}}</strong>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                    </div>
+                    <div class="text-end">
+                        <strong class="text-info">{{player.stats.rebounds|default(0)|round(1)}}</strong>
+                        <br><small class="text-muted">RPG</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0"><i class="fas fa-hands-helping"></i> Top Assist Leaders</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for player in stats.top_assisters[:5] %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        <strong>{{loop.index}}. {{player.name}}</strong>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                    </div>
+                    <div class="text-end">
+                        <strong class="text-warning">{{player.stats.assists|default(0)|round(1)}}</strong>
+                        <br><small class="text-muted">APG</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Player Selection Modal -->
+<div class="modal fade" id="selectPlayersModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="w-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="modal-title mb-0">Oyuncu Seç ({{ my_team|length }}/10)</h5>
+                        <div class="text-end">
+                            <div class="badge bg-warning text-dark fs-6" id="modalCreditDisplay">
+                                <i class="fas fa-coins"></i> Kredi: <span id="modalCurrentCredit">0</span>/200
+                            </div>
+                            <div>
+                                <small class="text-muted">Kalan: <span id="modalRemainingCredit" class="text-success fw-bold">200</span></small>
+                            </div>
+                        </div>
+                    </div>
+                    <small class="text-muted" id="positionRequirement">
+                        Roster Pozisyonları: 
+                        <span id="pgSlotStatus" class="badge bg-secondary">PG</span>
+                        <span id="sgSlotStatus" class="badge bg-secondary">SG</span>
+                        <span id="gSlotStatus" class="badge bg-secondary">G</span>
+                        <span id="sfSlotStatus" class="badge bg-secondary">SF</span>
+                        <span id="pfSlotStatus" class="badge bg-secondary">PF</span>
+                        <span id="fSlotStatus" class="badge bg-secondary">F</span>
+                        <span id="c1SlotStatus" class="badge bg-secondary">C</span>
+                        <span id="c2SlotStatus" class="badge bg-secondary">C</span>
+                        <span id="util1SlotStatus" class="badge bg-secondary">UTIL</span>
+                        <span id="util2SlotStatus" class="badge bg-secondary">UTIL</span>
+                    </small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Filters -->
+                <div class="row mb-3">
+                    <div class="col-md-2">
+                        <input type="text" id="playerSearch" class="form-control form-control-sm" placeholder="🔍 Oyuncu ara...">
+                    </div>
+                    <div class="col-md-2">
+                        <select id="positionFilter" class="form-select form-select-sm">
+                            <option value="">Tüm Pozisyonlar</option>
+                            <option value="PG">Point Guard (PG)</option>
+                            <option value="SG">Shooting Guard (SG)</option>
+                            <option value="G">Guard (G - PG/SG)</option>
+                            <option value="SF">Small Forward (SF)</option>
+                            <option value="PF">Power Forward (PF)</option>
+                            <option value="F">Forward (F - SF/PF)</option>
+                            <option value="C">Center (C)</option>
+                            <option value="UTIL">Utility (UTIL - Herkes)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select id="teamFilter" class="form-select form-select-sm">
+                            <option value="">Tüm Takımlar</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select id="sortCategory" class="form-select form-select-sm">
+                            <option value="credit">💰 Kredi</option>
+                            <option value="points">Sayı (PTS)</option>
+                            <option value="rebounds">Ribaund (REB)</option>
+                            <option value="assists">Asist (AST)</option>
+                            <option value="steals">Top Çalma (ST)</option>
+                            <option value="blocks">Blok (BLK)</option>
+                            <option value="threes">3 Sayı (3PM)</option>
+                            <option value="fg_percentage">Şut % (FG%)</option>
+                            <option value="ft_percentage">Serbest % (FT%)</option>
+                            <option value="turnovers">Top Kaybı (TO)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select id="sortDirection" class="form-select form-select-sm">
+                            <option value="desc">⬇️ Yüksek → Düşük</option>
+                            <option value="asc">⬆️ Düşük → Yüksek</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1">
+                        <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetFilters()">
+                            <i class="fas fa-redo"></i> Sıfırla
+                        </button>
+                    </div>
+                    <div class="col-md-1">
+                        <button class="btn btn-sm btn-outline-primary w-100" id="toggleSelectedBtn" onclick="toggleShowSelected()">
+                            <i class="fas fa-filter"></i> Seçililer
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover table-sm">
+                        <thead class="sticky-top bg-white">
+                            <tr>
+                                <th>İsim</th>
+                                <th>Pos</th>
+                                <th>Team</th>
+                                <th><i class="fas fa-coins text-warning"></i> Kredi</th>
+                                <th>PTS</th>
+                                <th>REB</th>
+                                <th>AST</th>
+                                <th>ST</th>
+                                <th>BLK</th>
+                                <th>3PTM</th>
+                                <th>FG%</th>
+                                <th>FT%</th>
+                                <th>TO</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody id="playersTableBody">
+                            {% for player in all_players %}
+                            <tr data-player-name="{{ player.name }}" 
+                                data-position="{{ player.position }}"
+                                data-team="{{ player.team }}"
+                                data-player-credit="0"
+                                class="player-table-row"
+                                data-points="{{ player.stats.points|default(0)|round(1) }}"
+                                data-rebounds="{{ player.stats.rebounds|default(0)|round(1) }}"
+                                data-assists="{{ player.stats.assists|default(0)|round(1) }}"
+                                data-steals="{{ player.stats.steals|default(0)|round(2) }}"
+                                data-blocks="{{ player.stats.blocks|default(0)|round(2) }}"
+                                data-threes="{{ player.stats.three_pointers_made|default(0)|round(1) }}"
+                                data-fg-pct="{{ (player.stats.fg_percentage * 100)|round(1) if player.stats.fg_percentage else 0 }}"
+                                data-ft-pct="{{ (player.stats.ft_percentage * 100)|round(1) if player.stats.ft_percentage else 0 }}"
+                                data-turnovers="{{ player.stats.turnovers|default(0)|round(1) }}">
+                                <td><strong>{{ player.name }}</strong></td>
+                                <td><span class="badge bg-info">{{ player.position }}</span></td>
+                                <td>{{ player.team }}</td>
+                                <td><span class="badge bg-secondary player-credit-badge">...</span></td>
+                                <td>{{ player.stats.points|default(0)|round(1) }}</td>
+                                <td>{{ player.stats.rebounds|default(0)|round(1) }}</td>
+                                <td>{{ player.stats.assists|default(0)|round(1) }}</td>
+                                <td>{{ player.stats.steals|default(0)|round(2) }}</td>
+                                <td>{{ player.stats.blocks|default(0)|round(2) }}</td>
+                                <td>{{ player.stats.three_pointers_made|default(0)|round(1) }}</td>
+                                <td>{{ (player.stats.fg_percentage * 100)|round(1) if player.stats.fg_percentage else '-' }}%</td>
+                                <td>{{ (player.stats.ft_percentage * 100)|round(1) if player.stats.ft_percentage else '-' }}%</td>
+                                <td>{{ player.stats.turnovers|default(0)|round(1) }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-success add-player-btn" 
+                                            data-player="{{ player.name }}"
+                                            data-position="{{ player.position }}">
+                                        <i class="fas fa-plus"></i> Ekle
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="me-auto">
+                    <small class="text-danger" id="validationMessage"></small>
+                </div>
+                <button type="button" class="btn btn-danger" onclick="clearAllPlayers()" id="clearAllBtn">
+                    <i class="fas fa-trash"></i> Tümünü Çıkar
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+                <button type="button" class="btn btn-primary" onclick="saveMyTeam()" id="saveTeamBtn">
+                    Kaydet ve Kapat
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Real-time stats are already loaded from server
+console.log('Dashboard loaded with {{stats.total_players}} players');
+
+// My team management with Yahoo Fantasy position tracking
+// Load from localStorage first, fallback to server data
+let storedTeam = localStorage.getItem('myTeam');
+let myTeam = storedTeam ? JSON.parse(storedTeam) : {{ my_team|tojson if my_team else '[]' }};
+let myTeamRoster = {
+    PG: null,
+    SG: null,
+    G: null,
+    SF: null,
+    PF: null,
+    F: null,
+    C1: null,
+    C2: null,
+    UTIL1: null,
+    UTIL2: null
+};
+let playerRankings = []; // Will store credit values
+
+// Save team to localStorage whenever it changes
+function saveTeamToStorage() {
+    localStorage.setItem('myTeam', JSON.stringify(myTeam));
+}
+
+// Get all unique teams for filter
+const allPlayers = {{ all_players|tojson|safe }};
+const uniqueTeams = [...new Set(allPlayers.map(p => p.team))].sort();
+const teamFilter = document.getElementById('teamFilter');
+if (teamFilter) {
+    uniqueTeams.forEach(team => {
+        const option = document.createElement('option');
+        option.value = team;
+        option.textContent = team;
+        teamFilter.appendChild(option);
+    });
+}
+
+// Load player credits from rankings API
+function loadPlayerCredits() {
+    fetch('/api/draft/rankings')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                playerRankings = data.rankings;
+                
+                // Update credit badges in table
+                document.querySelectorAll('.player-table-row').forEach(row => {
+                    const playerName = row.dataset.playerName;
+                    const ranking = playerRankings.find(r => r.name === playerName);
+                    
+                    if (ranking) {
+                        const credit = ranking.credit || 0;
+                        row.dataset.playerCredit = credit;
+                        
+                        const badge = row.querySelector('.player-credit-badge');
+                        if (badge) {
+                            badge.textContent = credit;
+                            // Color code by credit value
+                            badge.className = 'badge player-credit-badge';
+                            if (credit >= 40) {
+                                badge.classList.add('bg-danger');
+                            } else if (credit >= 25) {
+                                badge.classList.add('bg-warning', 'text-dark');
+                            } else if (credit >= 15) {
+                                badge.classList.add('bg-info');
+                            } else {
+                                badge.classList.add('bg-success');
+                            }
+                        }
+                    }
+                });
+                
+                // Update modal credit display
+                updateModalCreditDisplay();
+                console.log('Loaded credits for', playerRankings.length, 'players');
+            }
+        })
+        .catch(err => {
+            console.error('Error loading credits:', err);
+        });
+}
+
+// Update modal credit display
+function updateModalCreditDisplay() {
+    let totalCredit = 0;
+    
+    myTeam.forEach(playerName => {
+        const ranking = playerRankings.find(r => r.name === playerName);
+        if (ranking) {
+            totalCredit += ranking.credit || 0;
+        }
+    });
+    
+    const remainingCredit = 200 - totalCredit;
+    
+    const currentDisplay = document.getElementById('modalCurrentCredit');
+    const remainingDisplay = document.getElementById('modalRemainingCredit');
+    
+    if (currentDisplay) {
+        currentDisplay.textContent = totalCredit;
+        currentDisplay.parentElement.className = 'badge fs-6';
+        if (totalCredit > 180) {
+            currentDisplay.parentElement.classList.add('bg-danger', 'text-white');
+        } else if (totalCredit > 150) {
+            currentDisplay.parentElement.classList.add('bg-warning', 'text-dark');
+        } else {
+            currentDisplay.parentElement.classList.add('bg-success', 'text-white');
+        }
+    }
+    
+    if (remainingDisplay) {
+        remainingDisplay.textContent = remainingCredit;
+        remainingDisplay.className = remainingCredit >= 50 ? 'text-success fw-bold' : 
+                                     remainingCredit >= 20 ? 'text-warning fw-bold' : 
+                                     'text-danger fw-bold';
+    }
+}
+
+// Initialize Yahoo Fantasy roster from current team
+function initializePositions() {
+    // Reset roster
+    myTeamRoster = {
+        PG: null, SG: null, G: null, SF: null, PF: null,
+        F: null, C1: null, C2: null, UTIL1: null, UTIL2: null
+    };
+    
+    // Auto-assign players to positions
+    myTeam.forEach(playerName => {
+        const player = allPlayers.find(p => p.name === playerName);
+        if (player) {
+            assignPlayerToSlot(player);
+        }
+    });
+    
+    updateRosterDisplay();
+    updateModalCreditDisplay();
+}
+
+// Assign player to appropriate slot
+function assignPlayerToSlot(player) {
+    const positions = player.position.split('-'); // e.g., "PG-SG" -> ["PG", "SG"]
+    
+    // Try to assign to specific position first
+    for (let pos of positions) {
+        if (pos === 'PG' && !myTeamRoster.PG) {
+            myTeamRoster.PG = player.name;
+            return;
+        }
+        if (pos === 'SG' && !myTeamRoster.SG) {
+            myTeamRoster.SG = player.name;
+            return;
+        }
+        if (pos === 'SF' && !myTeamRoster.SF) {
+            myTeamRoster.SF = player.name;
+            return;
+        }
+        if (pos === 'PF' && !myTeamRoster.PF) {
+            myTeamRoster.PF = player.name;
+            return;
+        }
+        if (pos === 'C' && !myTeamRoster.C1) {
+            myTeamRoster.C1 = player.name;
+            return;
+        }
+        if (pos === 'C' && !myTeamRoster.C2) {
+            myTeamRoster.C2 = player.name;
+            return;
+        }
+    }
+    
+    // Try G slot (PG or SG)
+    if ((positions.includes('PG') || positions.includes('SG')) && !myTeamRoster.G) {
+        myTeamRoster.G = player.name;
+        return;
+    }
+    
+    // Try F slot (SF or PF)
+    if ((positions.includes('SF') || positions.includes('PF')) && !myTeamRoster.F) {
+        myTeamRoster.F = player.name;
+        return;
+    }
+    
+    // Try UTIL slots (anyone)
+    if (!myTeamRoster.UTIL1) {
+        myTeamRoster.UTIL1 = player.name;
+        return;
+    }
+    if (!myTeamRoster.UTIL2) {
+        myTeamRoster.UTIL2 = player.name;
+        return;
+    }
+}
+
+// Update roster display on dashboard
+function updateRosterDisplay() {
+    Object.keys(myTeamRoster).forEach(slot => {
+        const slotElement = document.getElementById(`slot-${slot}`);
+        if (slotElement) {
+            const playerName = myTeamRoster[slot];
+            if (playerName) {
+                const player = allPlayers.find(p => p.name === playerName);
+                const credit = playerRankings.find(r => r.name === playerName)?.credit || 0;
+                
+                slotElement.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${playerName}</strong><br>
+                            <small class="text-muted">${player?.team || ''} - ${player?.position || ''}</small>
+                        </div>
+                        <span class="badge bg-primary">${credit}</span>
+                    </div>
+                `;
+                slotElement.className = 'slot-player bg-white border border-top-0 rounded-bottom p-2';
+            } else {
+                slotElement.innerHTML = '<em class="text-muted">Boş</em>';
+                slotElement.className = 'slot-player bg-light border border-top-0 rounded-bottom p-2';
+            }
+        }
+    });
+    
+    // Update modal slot status badges
+    const slotMapping = {
+        'PG': 'pgSlotStatus',
+        'SG': 'sgSlotStatus',
+        'G': 'gSlotStatus',
+        'SF': 'sfSlotStatus',
+        'PF': 'pfSlotStatus',
+        'F': 'fSlotStatus',
+        'C1': 'c1SlotStatus',
+        'C2': 'c2SlotStatus',
+        'UTIL1': 'util1SlotStatus',
+        'UTIL2': 'util2SlotStatus'
+    };
+    
+    Object.keys(slotMapping).forEach(slot => {
+        const badge = document.getElementById(slotMapping[slot]);
+        if (badge) {
+            const isFilled = myTeamRoster[slot] !== null;
+            let displayName = slot;
+            if (slot === 'C1' || slot === 'C2') displayName = 'C';
+            if (slot === 'UTIL1' || slot === 'UTIL2') displayName = 'UTIL';
+            
+            badge.textContent = displayName;
+            badge.className = isFilled ? 'badge bg-success' : 'badge bg-secondary';
+        }
+    });
+}
+
+// Load credits when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Sync localStorage to server session on page load
+    syncTeamToServer();
+    
+    loadPlayerCredits();
+    
+    // Initialize roster display
+    setTimeout(() => {
+        initializePositions();
+        updateModalButtons();
+    }, 500); // Wait for credits to load
+    
+    // Add event listeners for filters
+    document.getElementById('playerSearch')?.addEventListener('input', applyFilters);
+    document.getElementById('positionFilter')?.addEventListener('change', applyFilters);
+    document.getElementById('teamFilter')?.addEventListener('change', applyFilters);
+    document.getElementById('sortCategory')?.addEventListener('change', applyFilters);
+    document.getElementById('sortDirection')?.addEventListener('change', applyFilters);
+});
+
+// Sync team from localStorage to server session
+function syncTeamToServer() {
+    const storedTeam = localStorage.getItem('myTeam');
+    if (storedTeam) {
+        try {
+            const team = JSON.parse(storedTeam);
+            if (team && team.length > 0) {
+                // Send to server to sync session
+                fetch('/api/save-team', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ team: team })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('Team synced to server:', team.length, 'players');
+                    } else {
+                        console.warn('Team sync warning:', data.error);
+                    }
+                })
+                .catch(err => console.error('Team sync error:', err));
+            }
+        } catch (e) {
+            console.error('Error parsing stored team:', e);
+        }
+    }
+}
+
+// Initialize modal when opened
+document.getElementById('selectPlayersModal')?.addEventListener('shown.bs.modal', function() {
+    initializePositions();
+    updateModalButtons();
+    validateTeam();
+    applyFilters();
+});
+
+function applyFilters() {
+    const searchTerm = document.getElementById('playerSearch')?.value.toLowerCase() || '';
+    const posFilter = document.getElementById('positionFilter')?.value || '';
+    const teamFilterVal = document.getElementById('teamFilter')?.value || '';
+    const sortBy = document.getElementById('sortCategory')?.value || 'credit';
+    const sortDirection = document.getElementById('sortDirection')?.value || 'desc';
+    
+    const rows = Array.from(document.querySelectorAll('#playersTableBody tr'));
+    
+    // Filter
+    rows.forEach(row => {
+        const playerName = row.dataset.playerName.toLowerCase();
+        const position = row.dataset.position;
+        const team = row.dataset.team;
+        
+        let show = true;
+        
+        if (searchTerm && !playerName.includes(searchTerm)) show = false;
+        
+        // Handle special position filters
+        if (posFilter) {
+            if (posFilter === 'G') {
+                // G slot can be PG or SG
+                if (!position.includes('PG') && !position.includes('SG')) show = false;
+            } else if (posFilter === 'F') {
+                // F slot can be SF or PF
+                if (!position.includes('SF') && !position.includes('PF')) show = false;
+            } else if (posFilter === 'UTIL') {
+                // UTIL can be anyone, so don't filter
+                show = true;
+            } else {
+                // Specific positions (PG, SG, SF, PF, C)
+                if (!position.includes(posFilter)) show = false;
+            }
+        }
+        
+        if (teamFilterVal && team !== teamFilterVal) show = false;
+        
+        row.style.display = show ? '' : 'none';
+    });
+    
+    // Sort visible rows
+    const visibleRows = rows.filter(row => row.style.display !== 'none');
+    visibleRows.sort((a, b) => {
+        let aVal, bVal;
+        
+        if (sortBy === 'credit') {
+            // Sort by credit value
+            aVal = parseFloat(a.dataset.playerCredit || 0);
+            bVal = parseFloat(b.dataset.playerCredit || 0);
+        } else if (sortBy === 'fg_percentage' || sortBy === 'ft_percentage') {
+            // Handle percentage fields
+            const fieldName = sortBy === 'fg_percentage' ? 'fgPct' : 'ftPct';
+            aVal = parseFloat(a.dataset[fieldName] || 0);
+            bVal = parseFloat(b.dataset[fieldName] || 0);
+        } else {
+            // Sort by stat values
+            aVal = parseFloat(a.dataset[sortBy] || 0);
+            bVal = parseFloat(b.dataset[sortBy] || 0);
+        }
+        
+        // Apply sort direction
+        if (sortDirection === 'asc') {
+            return aVal - bVal; // Ascending (low to high)
+        } else {
+            return bVal - aVal; // Descending (high to low)
+        }
+    });
+    
+    const tbody = document.getElementById('playersTableBody');
+    visibleRows.forEach(row => tbody.appendChild(row));
+}
+
+// Toggle showing only selected players
+let showingOnlySelected = false;
+
+function toggleShowSelected() {
+    const btn = document.getElementById('toggleSelectedBtn');
+    showingOnlySelected = !showingOnlySelected;
+    
+    if (showingOnlySelected) {
+        // Show only selected players
+        btn.classList.remove('btn-outline-primary');
+        btn.classList.add('btn-primary');
+        btn.innerHTML = '<i class="fas fa-check"></i> Seçililer';
+        
+        const rows = Array.from(document.querySelectorAll('#playersTableBody tr'));
+        rows.forEach(row => {
+            const playerName = row.dataset.playerName;
+            const isSelected = myTeam.includes(playerName);
+            row.style.display = isSelected ? '' : 'none';
+        });
+    } else {
+        // Show all (apply current filters)
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-outline-primary');
+        btn.innerHTML = '<i class="fas fa-filter"></i> Seçililer';
+        applyFilters();
+    }
+}
+
+function resetFilters() {
+    document.getElementById('playerSearch').value = '';
+    document.getElementById('positionFilter').value = '';
+    document.getElementById('teamFilter').value = '';
+    document.getElementById('sortCategory').value = 'credit';
+    document.getElementById('sortDirection').value = 'desc';
+    
+    // Reset toggle button
+    showingOnlySelected = false;
+    const btn = document.getElementById('toggleSelectedBtn');
+    if (btn) {
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-outline-primary');
+        btn.innerHTML = '<i class="fas fa-filter"></i> Seçililer';
+    }
+    
+    applyFilters();
+}
+
+function addToMyTeam(playerName, position) {
+    // Check max team size
+    if (myTeam.length >= 10) {
+        showValidationMessage('Maksimum 10 oyuncu seçebilirsiniz!');
+        return;
+    }
+    
+    // Check if already added
+    if (myTeam.includes(playerName)) {
+        showValidationMessage('Bu oyuncu zaten takımınızda!');
+        return;
+    }
+    
+    // Calculate current team credit
+    let currentCredit = 0;
+    myTeam.forEach(pName => {
+        const ranking = playerRankings.find(r => r.name === pName);
+        if (ranking) {
+            currentCredit += ranking.credit || 0;
+        }
+    });
+    
+    // Get new player's credit
+    const newPlayerRanking = playerRankings.find(r => r.name === playerName);
+    const newPlayerCredit = newPlayerRanking ? (newPlayerRanking.credit || 0) : 0;
+    
+    // Check credit limit
+    if (currentCredit + newPlayerCredit > 200) {
+        showValidationMessage(`Kredi limiti aşılıyor! Mevcut: ${currentCredit}, Eklenecek: ${newPlayerCredit}, Toplam: ${currentCredit + newPlayerCredit}/200`);
+        return;
+    }
+    
+    // Add player and auto-assign to roster slot
+    myTeam.push(playerName);
+    const player = allPlayers.find(p => p.name === playerName);
+    if (player) {
+        assignPlayerToSlot(player);
+    }
+    
+    saveTeamToStorage(); // Save to localStorage
+    updateTeamDisplay();
+    updateModalButtons();
+    updateRosterDisplay();
+    updateModalCreditDisplay();
+    validateTeam();
+}
+
+function removeFromMyTeam(playerName) {
+    // Remove from myTeam array
+    myTeam = myTeam.filter(name => name !== playerName);
+    
+    // Remove from roster slots
+    Object.keys(myTeamRoster).forEach(slot => {
+        if (myTeamRoster[slot] === playerName) {
+            myTeamRoster[slot] = null;
+        }
+    });
+    
+    saveTeamToStorage(); // Save to localStorage
+    updateTeamDisplay();
+    updateModalButtons();
+    updateRosterDisplay();
+    updateModalCreditDisplay();
+    validateTeam();
+}
+
+function clearAllPlayers() {
+    if (myTeam.length === 0) {
+        showValidationMessage('Takımınızda oyuncu yok!');
+        return;
+    }
+    
+    // Confirm action
+    if (!confirm(`${myTeam.length} oyuncuyu takımdan çıkarmak istediğinizden emin misiniz?`)) {
+        return;
+    }
+    
+    // Clear all players and roster
+    myTeam = [];
+    myTeamRoster = {
+        PG: null, SG: null, G: null, SF: null, PF: null,
+        F: null, C1: null, C2: null, UTIL1: null, UTIL2: null
+    };
+    
+    saveTeamToStorage(); // Save to localStorage
+    updateTeamDisplay();
+    updateModalButtons();
+    updateRosterDisplay();
+    updateModalCreditDisplay();
+    validateTeam();
+    
+    showValidationMessage('Tüm oyuncular takımdan çıkarıldı!');
+}
+
+function validateTeam() {
+    const totalSlots = 10;
+    const filledSlots = myTeam.length;
+    
+    const saveBtn = document.getElementById('saveTeamBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const validationMsg = document.getElementById('validationMessage');
+    
+    // Enable/disable clear all button based on team size
+    if (clearAllBtn) {
+        clearAllBtn.disabled = myTeam.length === 0;
+    }
+    
+    if (filledSlots < totalSlots) {
+        saveBtn.disabled = true;
+        validationMsg.textContent = `${filledSlots}/10 oyuncu seçildi. Takım tamamlanmadı!`;
+    } else if (filledSlots === totalSlots) {
+        saveBtn.disabled = false;
+        validationMsg.textContent = '';
+    } else {
+        saveBtn.disabled = true;
+        validationMsg.textContent = 'Maksimum 10 oyuncu seçebilirsiniz!';
+    }
+}
+
+function showValidationMessage(message) {
+    const validationMsg = document.getElementById('validationMessage');
+    if (validationMsg) {
+        validationMsg.textContent = message;
+        setTimeout(() => {
+            validationMsg.textContent = '';
+        }, 3000);
+    }
+}
+
+function updateTeamDisplay() {
+    const teamList = document.getElementById('myTeamList');
+    if (!teamList) return;
+    
+    if (myTeam.length === 0) {
+        teamList.innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> Henüz oyuncu seçmediniz. "Oyuncu Ekle" butonuna tıklayarak her pozisyondan en az 1 oyuncu seçin.
+            </div>
+        `;
+    } else {
+        let html = '<div class="row">';
+        myTeam.forEach(name => {
+            const player = allPlayers.find(p => p.name === name);
+            const pos = player ? player.position : '?';
+            const ranking = playerRankings.find(r => r.name === name);
+            const credit = ranking ? (ranking.credit || 0) : 0;
+            
+            // Color code credit badge
+            let creditClass = 'bg-secondary';
+            if (credit >= 40) creditClass = 'bg-danger';
+            else if (credit >= 25) creditClass = 'bg-warning text-dark';
+            else if (credit >= 15) creditClass = 'bg-info';
+            else creditClass = 'bg-success';
+            
+            html += `
+                <div class="col-md-4 mb-2">
+                    <div class="alert alert-success d-flex justify-content-between align-items-center p-2 mb-0">
+                        <span>
+                            <strong>${name}</strong>
+                            <span class="badge ${creditClass} ms-1">${credit}</span>
+                            <br><small class="text-muted">${pos}</small>
+                        </span>
+                        <button class="btn btn-sm btn-danger" onclick="removeFromMyTeam('${name}')">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        teamList.innerHTML = html;
+    }
+    
+    // Update modal title
+    const modalTitle = document.querySelector('#selectPlayersModal .modal-title');
+    if (modalTitle) {
+        modalTitle.textContent = `Oyuncu Seç (${myTeam.length}/10)`;
+    }
+}
+
+function updateModalButtons() {
+    const addButtons = document.querySelectorAll('.add-player-btn');
+    addButtons.forEach(btn => {
+        const playerName = btn.dataset.player;
+        if (myTeam.includes(playerName)) {
+            // Player is already in team - show remove button
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-times"></i> Çıkar';
+            btn.onclick = function(e) {
+                e.preventDefault();
+                removeFromMyTeam(playerName);
+            };
+        } else if (myTeam.length >= 10) {
+            // Team is full - disable add button
+            btn.classList.remove('btn-danger');
+            btn.classList.add('btn-secondary');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-ban"></i> Tam';
+            btn.onclick = function(e) {
+                e.preventDefault();
+                showValidationMessage('Maksimum 10 oyuncu seçebilirsiniz!');
+            };
+        } else {
+            // Available to add
+            btn.classList.remove('btn-secondary', 'btn-danger');
+            btn.classList.add('btn-success');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus"></i> Ekle';
+            const position = btn.dataset.position;
+            btn.onclick = function(e) {
+                e.preventDefault();
+                addToMyTeam(playerName, position);
+            };
+        }
+    });
+}
+
+function saveMyTeam() {
+    if (myTeam.length < 10) {
+        alert(`Takım tamamlanmadı! ${myTeam.length}/10 oyuncu seçildi.`);
+        return;
+    }
+    
+    // Calculate total credit
+    let totalCredit = 0;
+    myTeam.forEach(playerName => {
+        const ranking = playerRankings.find(r => r.name === playerName);
+        if (ranking) {
+            totalCredit += ranking.credit || 0;
+        }
+    });
+    
+    if (totalCredit > 200) {
+        alert(`Kredi limiti aşıldı! Toplam: ${totalCredit}/200`);
+        return;
+    }
+    
+    fetch('/api/save-team', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ team: myTeam })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Clear localStorage since team is now saved in session
+            localStorage.removeItem('myTeam');
+            alert(`Takımınız kaydedildi!\n✅ Oyuncu Sayısı: ${data.team_size}\n💰 Kullanılan Kredi: ${data.total_credit}/200\n💵 Kalan Kredi: ${data.remaining_credit}`);
+            // Close modal without reload - state already updated in frontend
+            const modal = bootstrap.Modal.getInstance(document.getElementById('selectPlayersModal'));
+            if (modal) modal.hide();
+        } else {
+            alert('Hata: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Takım kaydedilemedi!');
+    });
+}
+
+// Initialize modal when opened
+document.getElementById('selectPlayersModal')?.addEventListener('shown.bs.modal', function() {
+    initializePositions();
+    updateModalButtons();
+    validateTeam();
+    applyFilters();
+});
+
+// Initialize on page load
+if (myTeam.length > 0) {
+    initializePositions();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA Players - Yahoo NBA Fantasy Assistant</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        .sortable:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .sortable i {
+            margin-left: 5px;
+            opacity: 0.5;
+        }
+        .sortable.sort-asc i:before {
+            content: "\f0de";
+            opacity: 1;
+        }
+        .sortable.sort-desc i:before {
+            content: "\f0dd";
+            opacity: 1;
+        }
+        
+        /* Tooltip styling */
+        th[title] {
+            cursor: help;
+        }
+        
+        /* Make table scrollable horizontally with many columns */
+        .table-responsive {
+            max-height: 70vh;
+            overflow-x: auto;
+            overflow-y: auto;
+        }
+        
+        /* Sticky header */
+        .table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: #212529 !important;
+        }
+        
+        /* Sticky first column (player name) */
+        .table tbody td:first-child,
+        .table thead th:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 5;
+            background-color: inherit;
+        }
+        
+        .table thead th:first-child {
+            z-index: 11;
+            background-color: #212529 !important;
+        }
+        
+        .table tbody td:first-child {
+            background-color: #fff;
+        }
+        
+        .table-striped tbody tr:nth-of-type(odd) td:first-child {
+            background-color: rgba(0,0,0,.05);
+        }
+        
+        /* Add shadow to sticky column */
+        .table tbody td:first-child::after,
+        .table thead th:first-child::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 1px;
+            background: linear-gradient(to right, rgba(0,0,0,.1), transparent);
+        }
+        
+        /* Compact table */
+        .table-sm th, .table-sm td {
+            padding: 0.3rem;
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-basketball-ball"></i> NBA Fantasy Assistant
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('index') }}">Dashboard</a>
+                <a class="nav-link" href="{{ url_for('draft_page') }}">Draft Assistant</a>
+                <a class="nav-link active" href="{{ url_for('nba_players') }}">NBA Players</a>
+                <a class="nav-link" href="{{ url_for('matchup_page') }}">Matchup Simulator</a>
+                <a class="nav-link" href="{{ url_for('recommendations_page') }}">Recommendations</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h3><i class="fas fa-users"></i> NBA Players Database</h3>
+                        <div class="d-flex gap-2">
+                            <select id="seasonFilter" class="form-select form-select-sm" style="width: auto;">
+                                {% for season in seasons %}
+                                <option value="{{ season }}" {% if season == current_season %}selected{% endif %}>{{ season }}</option>
+                                {% endfor %}
+                            </select>
+                            <select id="positionFilter" class="form-select form-select-sm" style="width: auto;">
+                                <option value="">All Positions</option>
+                                <option value="PG">Point Guard (PG)</option>
+                                <option value="SG">Shooting Guard (SG)</option>
+                                <option value="SF">Small Forward (SF)</option>
+                                <option value="PF">Power Forward (PF)</option>
+                                <option value="C">Center (C)</option>
+                            </select>
+                            <button id="updateStatsBtn" class="btn btn-success btn-sm" title="Scrape latest stats from Basketball Reference">
+                                <i class="fas fa-download"></i> Update Stats
+                            </button>
+                            <button id="refreshBtn" class="btn btn-primary btn-sm">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="loading" class="text-center py-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading NBA players...</p>
+                        </div>
+                        
+                        <div id="noDataMessage" class="alert alert-info text-center" style="display: none;">
+                            <i class="fas fa-info-circle fa-3x mb-3"></i>
+                            <h4>2025-2026 NBA Season Has Not Started Yet</h4>
+                            <p class="mb-3">The 2025-2026 NBA season hasn't begun, so there are no player statistics available yet.</p>
+                            <p class="text-muted">Please select a previous season (2024-25, 2023-24, or 2022-23) to view historical player data.</p>
+                            <div class="mt-3">
+                                <strong>Season Start:</strong> Expected in October 2025<br>
+                                <strong>Current Date:</strong> October 2025
+                            </div>
+                        </div>
+                        
+                        <div id="playersContent" style="display: none;">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <input type="text" id="searchInput" class="form-control" placeholder="Search players...">
+                                </div>
+                                <div class="col-md-6 text-end">
+                                    <span id="playerCount" class="text-muted"></span>
+                                </div>
+                            </div>
+                            
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover table-sm">
+                                    <thead class="table-dark sticky-top">
+                                        <tr>
+                                            <!-- Basic Info -->
+                                            <th class="sortable" data-sort="name" title="Player Name">Player <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="team" title="Team">Team <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="position" title="Position">Pos <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="age" title="Age">Age <i class="fas fa-sort"></i></th>
+                                            
+                                            <!-- Key Stats -->
+                                            <th class="sortable" data-sort="points" title="Points Per Game">PTS <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="assists" title="Assists Per Game">AST <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="rebounds" title="Total Rebounds Per Game">TRB <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="blocks" title="Blocks Per Game">BLK <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="steals" title="Steals Per Game">STL <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="ft_percentage" title="Free Throw Percentage">FT% <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="turnovers" title="Turnovers Per Game">TOV <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="personal_fouls" title="Personal Fouls Per Game">PF <i class="fas fa-sort"></i></th>
+                                            
+                                            <!-- Shooting Stats -->
+                                            <th class="sortable" data-sort="fg_percentage" title="Field Goal Percentage">FG% <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="three_point_percentage" title="Three-Point Percentage">3P% <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="effective_fg_pct" title="Effective Field Goal Percentage">eFG% <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="two_point_pct" title="Two-Point Percentage">2P% <i class="fas fa-sort"></i></th>
+                                            
+                                            <!-- Games & Minutes -->
+                                            <th class="sortable" data-sort="games_played" title="Games Played">GP <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="games_started" title="Games Started">GS <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="minutes" title="Minutes Per Game">MPG <i class="fas fa-sort"></i></th>
+                                            
+                                            <!-- Field Goals Detail -->
+                                            <th class="sortable" data-sort="field_goals" title="Field Goals Made Per Game">FG <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="field_goal_attempts" title="Field Goal Attempts Per Game">FGA <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="three_pointers_made" title="Three-Pointers Made Per Game">3P <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="three_point_attempts" title="Three-Point Attempts Per Game">3PA <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="two_pointers" title="Two-Pointers Made Per Game">2P <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="two_point_attempts" title="Two-Point Attempts Per Game">2PA <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="free_throws" title="Free Throws Made Per Game">FT <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="free_throw_attempts" title="Free Throw Attempts Per Game">FTA <i class="fas fa-sort"></i></th>
+                                            
+                                            <!-- Rebounds Detail -->
+                                            <th class="sortable" data-sort="offensive_rebounds" title="Offensive Rebounds Per Game">ORB <i class="fas fa-sort"></i></th>
+                                            <th class="sortable" data-sort="defensive_rebounds" title="Defensive Rebounds Per Game">DRB <i class="fas fa-sort"></i></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="playersTable">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let allPlayers = [];
+        let currentSort = { field: null, direction: 'asc' };
+
+        // Load players on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPlayers();
+            
+            // Add click listeners to sortable headers
+            document.querySelectorAll('.sortable').forEach(header => {
+                header.addEventListener('click', function() {
+                    const sortField = this.dataset.sort;
+                    sortPlayers(sortField);
+                });
+            });
+        });
+
+        // Event listeners
+        document.getElementById('refreshBtn').addEventListener('click', loadPlayers);
+        document.getElementById('updateStatsBtn').addEventListener('click', updateStats);
+        document.getElementById('positionFilter').addEventListener('change', filterPlayers);
+        document.getElementById('seasonFilter').addEventListener('change', loadPlayers);
+        document.getElementById('searchInput').addEventListener('input', filterPlayers);
+
+        function updateStats() {
+            const btn = document.getElementById('updateStatsBtn');
+            const season = document.getElementById('seasonFilter').value;
+            // Convert 2025-26 to 2026 for database
+            const seasonYear = parseInt(season.split('-')[0]) + 1;
+            
+            // Disable button and show loading
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Checking...';
+            
+            // Call NBA scraper API
+            fetch('/nba/update-stats', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    seasons: [seasonYear]
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-download"></i> Update Stats';
+                
+                if (data.instructions) {
+                    // Show manual download instructions
+                    showInstructions(data);
+                } else if (data.success && data.seasons_processed > 0) {
+                    const result = data.results[seasonYear];
+                    alert(`✓ ${data.message}\n\n${result.players_count} oyuncu başarıyla güncellendi!\n\nSayfa yenileniyor...`);
+                    // Reload page to clear all caches and show new data
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    alert(`⚠ Hata: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-download"></i> Update Stats';
+                console.error('Error:', error);
+                alert('Güncelleme sırasında hata oluştu. Konsolu kontrol edin.');
+            });
+        }
+
+        function showInstructions(data) {
+            const instructions = data.instructions;
+            let message = `${instructions.title}\n\n${instructions.description}\n\n`;
+            
+            instructions.steps.forEach(step => {
+                message += `${step.step}. ${step.text}\n`;
+                if (step.seasons) {
+                    step.seasons.forEach(s => {
+                        message += `\n   Sezon: ${s.season}\n`;
+                        message += `   URL: ${s.url}\n`;
+                        message += `   Kayıt yeri: ${s.save_location}\n`;
+                    });
+                }
+                message += '\n';
+            });
+            
+            if (data.imported_seasons && data.imported_seasons.length > 0) {
+                message += `\n✓ ${data.imported_seasons.length} sezon başarıyla import edildi: ${data.imported_seasons.join(', ')}`;
+            }
+            
+            alert(message);
+        }
+
+        function sortPlayers(field) {
+            // Toggle sort direction
+            if (currentSort.field === field) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = field;
+                currentSort.direction = 'asc';
+            }
+            
+            // Update header indicators
+            document.querySelectorAll('.sortable').forEach(header => {
+                header.classList.remove('sort-asc', 'sort-desc');
+                if (header.dataset.sort === field) {
+                    header.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+                }
+            });
+            
+            // Sort the current filtered players
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const position = document.getElementById('positionFilter').value;
+            
+            let filteredPlayers = allPlayers;
+            
+            if (position) {
+                filteredPlayers = filteredPlayers.filter(player => player.position === position);
+            }
+            
+            if (searchTerm) {
+                filteredPlayers = filteredPlayers.filter(player => 
+                    player.name.toLowerCase().includes(searchTerm) ||
+                    player.team.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            // Sort the filtered players
+            filteredPlayers.sort((a, b) => {
+                let aVal, bVal;
+                
+                // String fields
+                if (field === 'name' || field === 'team' || field === 'position') {
+                    aVal = a[field].toString().toLowerCase();
+                    bVal = b[field].toString().toLowerCase();
+                }
+                // Direct player fields
+                else if (['age', 'games_played', 'games_started', 'minutes'].includes(field)) {
+                    aVal = a[field] || 0;
+                    bVal = b[field] || 0;
+                }
+                // Stats fields
+                else {
+                    aVal = a.stats[field] || 0;
+                    bVal = b.stats[field] || 0;
+                }
+                
+                if (typeof aVal === 'string') {
+                    return currentSort.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                } else {
+                    return currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+                }
+            });
+            
+            displayPlayers(filteredPlayers);
+        }
+
+        function loadPlayers() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('playersContent').style.display = 'none';
+            document.getElementById('noDataMessage').style.display = 'none';
+            
+            const position = document.getElementById('positionFilter').value;
+            const season = document.getElementById('seasonFilter').value;
+            
+            let url = `/api/players?limit=all&season=${season}`;
+            if (position) {
+                url += `&position=${position}`;
+            }
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        if (data.count === 0) {
+                            // No data for this season
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('noDataMessage').style.display = 'block';
+                        } else {
+                            allPlayers = data.players;
+                            displayPlayers(allPlayers);
+                            document.getElementById('playerCount').textContent = `${data.count} players found`;
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('playersContent').style.display = 'block';
+                        }
+                    } else {
+                        alert('Error loading players: ' + data.error);
+                        document.getElementById('loading').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error loading players');
+                    document.getElementById('loading').style.display = 'none';
+                });
+        }
+
+        function filterPlayers() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const position = document.getElementById('positionFilter').value;
+            
+            let filteredPlayers = allPlayers;
+            
+            if (position) {
+                filteredPlayers = filteredPlayers.filter(player => player.position === position);
+            }
+            
+            if (searchTerm) {
+                filteredPlayers = filteredPlayers.filter(player => 
+                    player.name.toLowerCase().includes(searchTerm) ||
+                    player.team.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            // Apply current sorting if exists
+            if (currentSort.field) {
+                filteredPlayers.sort((a, b) => {
+                    let aVal, bVal;
+                    
+                    // String fields
+                    if (currentSort.field === 'name' || currentSort.field === 'team' || currentSort.field === 'position') {
+                        aVal = a[currentSort.field].toString().toLowerCase();
+                        bVal = b[currentSort.field].toString().toLowerCase();
+                    }
+                    // Direct player fields
+                    else if (['age', 'games_played', 'games_started', 'minutes'].includes(currentSort.field)) {
+                        aVal = a[currentSort.field] || 0;
+                        bVal = b[currentSort.field] || 0;
+                    }
+                    // Stats fields
+                    else {
+                        aVal = a.stats[currentSort.field] || 0;
+                        bVal = b.stats[currentSort.field] || 0;
+                    }
+                    
+                    if (typeof aVal === 'string') {
+                        return currentSort.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                    } else {
+                        return currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+                    }
+                });
+            }
+            
+            displayPlayers(filteredPlayers);
+            document.getElementById('playerCount').textContent = `${filteredPlayers.length} players found`;
+        }
+
+        function displayPlayers(players) {
+            const tbody = document.getElementById('playersTable');
+            tbody.innerHTML = '';
+
+            players.forEach(player => {
+                const stats = player.stats;
+                const row = document.createElement('tr');
+                
+                // Helper function to format stat values
+                const fmt = (val, decimals = 1) => val != null ? val.toFixed(decimals) : '-';
+                const pct = (val) => val != null ? (val * 100).toFixed(1) + '%' : '-';
+                
+                row.innerHTML = `
+                    <td>
+                        <strong>${player.name}</strong>
+                        <small class="text-muted d-block">ID: ${player.player_id}</small>
+                    </td>
+                    <td><span class="badge bg-secondary">${player.team}</span></td>
+                    <td><span class="badge bg-primary">${player.position}</span></td>
+                    <td>${player.age}</td>
+                    
+                    <td><strong>${fmt(stats.points)}</strong></td>
+                    <td>${fmt(stats.assists)}</td>
+                    <td>${fmt(stats.rebounds)}</td>
+                    <td>${fmt(stats.blocks)}</td>
+                    <td>${fmt(stats.steals)}</td>
+                    <td>${pct(stats.ft_percentage)}</td>
+                    <td>${fmt(stats.turnovers)}</td>
+                    <td>${fmt(stats.personal_fouls)}</td>
+                    
+                    <td>${pct(stats.fg_percentage)}</td>
+                    <td>${pct(stats.three_point_percentage)}</td>
+                    <td>${pct(stats.effective_fg_pct)}</td>
+                    <td>${pct(stats.two_point_pct)}</td>
+                    
+                    <td>${player.games_played || '-'}</td>
+                    <td>${player.games_started || '-'}</td>
+                    <td>${fmt(player.minutes)}</td>
+                    
+                    <td>${fmt(stats.field_goals)}</td>
+                    <td>${fmt(stats.field_goal_attempts)}</td>
+                    <td>${fmt(stats.three_pointers_made)}</td>
+                    <td>${fmt(stats.three_point_attempts)}</td>
+                    <td>${fmt(stats.two_pointers)}</td>
+                    <td>${fmt(stats.two_point_attempts)}</td>
+                    <td>${fmt(stats.free_throws)}</td>
+                    <td>${fmt(stats.free_throw_attempts)}</td>
+                    
+                    <td>${fmt(stats.offensive_rebounds)}</td>
+                    <td>${fmt(stats.defensive_rebounds)}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+    </script>
+</body>
+</html>
