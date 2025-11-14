@@ -6,9 +6,9 @@ A comprehensive full-stack web application for Yahoo NBA Fantasy Basketball that
 
 ### ✅ Real NBA Data Integration
 - **Live NBA Player Database**: 450+ active NBA players with real 2025-26 season statistics
-- **Stats.NBA.com API Integration**: Official NBA statistics including points, rebounds, assists, shooting percentages
-- **Real-time Updates**: Fresh data from the most current NBA season
-- **Comprehensive Stats**: Complete player profiles with advanced metrics
+- **Basketball Reference Web Scraper**: Automated data collection from Basketball-Reference.com for official NBA statistics
+- **SQLite Database**: Persistent storage with real player stats including points, rebounds, assists, shooting percentages
+- **Comprehensive Stats**: Complete player profiles with advanced metrics and historical data
 
 ### 🎯 Core Features
 - **Draft Assistant**: Historical analysis with weighted averages (2024-25: 60%, 2023-24: 30%, 2022-23: 10%)
@@ -28,14 +28,15 @@ A comprehensive full-stack web application for Yahoo NBA Fantasy Basketball that
 ### Prerequisites
 - Python 3.8+
 - Flask 3.1.2
-- NBA Stats API access (built-in)
+- BeautifulSoup4 (for web scraping)
+- SQLAlchemy (for database management)
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd "National Zaza Association Helper"
+   cd "Yahoo NBA Fantasy Assistant"
    ```
 
 2. **Install dependencies**
@@ -56,7 +57,7 @@ A comprehensive full-stack web application for Yahoo NBA Fantasy Basketball that
 
 5. **Open your browser**
    ```
-   http://127.0.0.1:5000
+   https://127.0.0.1:5000
    ```
 
 ## 🔧 Configuration
@@ -105,10 +106,11 @@ Returns detailed player statistics and history.
 ### Backend Modules
 - `app.py` - Flask application with real NBA data integration
 - `auth.py` - Yahoo OAuth2 authentication
-- `data.py` - **NBA Stats API integration** with Stats.NBA.com
+- `data.py` - Data management with SQLite database
 - `draft.py` - Historical analysis using real player data
 - `simulation.py` - Monte Carlo matchup simulation
 - `recommendation.py` - AI-powered player recommendations
+- `services/nba_scraper.py` - **Web scraper** for Basketball-Reference.com
 
 ### Frontend
 - `templates/` - Responsive HTML templates with Bootstrap 5
@@ -118,10 +120,10 @@ Returns detailed player statistics and history.
 ## 📈 NBA Data Integration
 
 ### Data Sources
-1. **Primary**: Stats.NBA.com official API
-2. **Coverage**: 500+ active NBA players
-3. **Statistics**: Complete 2023-24 season data
-4. **Update Frequency**: Real-time during NBA season
+1. **Primary**: Basketball-Reference.com (via web scraping)
+2. **Coverage**: 450+ active NBA players
+3. **Statistics**: Complete 2025-26 season projections and historical data (2022-23 to 2024-25)
+4. **Storage**: SQLite database with automated updates
 
 ### Supported Statistics
 - Basic Stats: Points, Rebounds, Assists, Steals, Blocks
@@ -164,22 +166,11 @@ curl http://127.0.0.1:5000/api/free_agents?count=5
 3. Test filtering and search functionality
 4. Confirm fantasy scoring calculations
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add real NBA data integration'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## ⚠️ Disclaimer
 
-This application is for educational and personal use only. It is not affiliated with Yahoo, NBA, or any official fantasy sports platforms. NBA statistics are used in accordance with publicly available data policies.
+This application is for personal use only. It is not affiliated with Yahoo, NBA, or any official fantasy sports platforms. NBA statistics are scraped from publicly available data sources in accordance with their terms of service.
 
 ---
 
-**Built with ❤️ using Flask, NBA Stats API, and real NBA data integration**
+**Built with ❤️ using Flask, BeautifulSoup4, SQLAlchemy, and Basketball-Reference.com data**
