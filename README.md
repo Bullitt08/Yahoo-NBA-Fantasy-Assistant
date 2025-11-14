@@ -35,7 +35,7 @@ A comprehensive full-stack web application for Yahoo NBA Fantasy Basketball that
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd "National Zaza Association Helper"
+   cd "Yahoo NBA Fantasy Assistant"
    ```
 
 2. **Install dependencies**
@@ -56,7 +56,7 @@ A comprehensive full-stack web application for Yahoo NBA Fantasy Basketball that
 
 5. **Open your browser**
    ```
-   http://127.0.0.1:5000
+   https://127.0.0.1:5000
    ```
 
 ## 🔧 Configuration
@@ -164,22 +164,7 @@ curl http://127.0.0.1:5000/api/free_agents?count=5
 3. Test filtering and search functionality
 4. Confirm fantasy scoring calculations
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add real NBA data integration'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## ⚠️ Disclaimer
 
-This application is for educational and personal use only. It is not affiliated with Yahoo, NBA, or any official fantasy sports platforms. NBA statistics are used in accordance with publicly available data policies.
-
----
-
-**Built with ❤️ using Flask, NBA Stats API, and real NBA data integration**
+This application is for personal use only. It is not affiliated with Yahoo, NBA, or any official fantasy sports platforms. NBA statistics are used in accordance with publicly available data policies.
