@@ -431,7 +431,11 @@
 async function loadYahooTeamsForRecommendations() {
     try {
         console.log('[DEBUG] Starting to load Yahoo teams for recommendations...');
-        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        // Get season from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const season = urlParams.get('season') || '2025-26';
+        console.log('[DEBUG] Using season:', season);
+        const response = await fetch(`/yahoo/leagues?season=${season}&format=json`);
         const data = await response.json();
         
         console.log('[DEBUG] Leagues response:', data);
@@ -622,7 +626,10 @@ async function loadYahooLeaguesForRecommend() {
     modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading Yahoo leagues...</p></div>';
     
     try {
-        const response = await fetch('/yahoo/leagues?season=2024-25&format=json');
+        // Get season from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const season = urlParams.get('season') || '2025-26';
+        const response = await fetch(`/yahoo/leagues?season=${season}&format=json`);
         const data = await response.json();
         
         if (data.success && data.leagues && data.leagues.length > 0) {
@@ -747,7 +754,11 @@ let allAvailablePlayers = [];
 // Load all available players for comparison
 async function loadAvailablePlayersForComparison() {
     try {
-        const response = await fetch('/api/players?season=2024-25');
+        // Get season from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const season = urlParams.get('season') || '2025-26';
+        console.log('[DEBUG] Loading players for comparison with season:', season);
+        const response = await fetch(`/api/players?season=${season}`);
         const data = await response.json();
         if (data.players) {
             allAvailablePlayers = data.players;

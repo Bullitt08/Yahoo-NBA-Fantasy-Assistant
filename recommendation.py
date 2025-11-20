@@ -400,23 +400,28 @@ class RecommendationEngine:
         """Calculate overall fantasy value using all 9 categories (balanced approach)"""
         stats = player.get('stats', {})
         
+        # Helper function to safely get numeric values
+        def get_stat(key, default=0):
+            val = stats.get(key, default)
+            return float(val) if val is not None else default
+        
         # 9-Category Fantasy Basketball (equal weight approach)
         # PTS, REB, AST, STL, BLK, 3PM, FG%, FT%, TO
         
         # Counting stats (normalized)
-        pts = stats.get('points', 0) * 1.0         # Points
-        reb = stats.get('rebounds', 0) * 1.3       # Rebounds (slightly more valuable)
-        ast = stats.get('assists', 0) * 1.5        # Assists (playmaking valued)
-        stl = stats.get('steals', 0) * 3.5         # Steals (rare defensive stat)
-        blk = stats.get('blocks', 0) * 3.5         # Blocks (rare defensive stat)
-        threes = stats.get('three_pointers_made', 0) * 1.5  # 3-pointers made
-        to = stats.get('turnovers', 0) * -2.0      # Turnovers (penalty)
+        pts = get_stat('points', 0) * 1.0         # Points
+        reb = get_stat('rebounds', 0) * 1.3       # Rebounds (slightly more valuable)
+        ast = get_stat('assists', 0) * 1.5        # Assists (playmaking valued)
+        stl = get_stat('steals', 0) * 3.5         # Steals (rare defensive stat)
+        blk = get_stat('blocks', 0) * 3.5         # Blocks (rare defensive stat)
+        threes = get_stat('three_pointers_made', 0) * 1.5  # 3-pointers made
+        to = get_stat('turnovers', 0) * -2.0      # Turnovers (penalty)
         
         # Shooting percentages (scaled to match counting stats impact)
-        fg_pct = stats.get('fg_percentage', 0)
+        fg_pct = get_stat('fg_percentage', 0)
         fg_value = (fg_pct - 0.45) * 100 if fg_pct else 0  # League avg ~45%
         
-        ft_pct = stats.get('ft_percentage', 0)
+        ft_pct = get_stat('ft_percentage', 0)
         ft_value = (ft_pct - 0.75) * 80 if ft_pct else 0   # League avg ~75%
         
         # Total value
@@ -509,8 +514,13 @@ class RecommendationEngine:
         ]
         
         for stat_key, stat_name, multiplier, is_percentage in categories:
+            # Handle None values - convert to 0
             drop_val = drop_stats.get(stat_key, 0)
             add_val = add_stats.get(stat_key, 0)
+            
+            # Ensure values are numeric (not None)
+            drop_val = float(drop_val) if drop_val is not None else 0.0
+            add_val = float(add_val) if add_val is not None else 0.0
             
             if stat_key == 'turnovers':
                 # For turnovers, LOWER is BETTER
@@ -875,7 +885,7 @@ class RecommendationEngine:
         return recommendations[:20]  # Top 20 multi-player trades
     
     def _sum_player_stats(self, players):
-        """Sum stats across multiple players"""
+        """Sum stats across multiple players (handles None values)"""
         totals = {
             'points': 0, 'rebounds': 0, 'assists': 0, 'steals': 0, 'blocks': 0,
             'three_pointers_made': 0, 'field_goals': 0, 'field_goal_attempts': 0,
@@ -885,34 +895,51 @@ class RecommendationEngine:
         for p in players:
             stats = p.get('stats', {})
             for key in totals.keys():
-                totals[key] += stats.get(key, 0)
+                val = stats.get(key, 0)
+                # Handle None values
+                totals[key] += float(val) if val is not None else 0
         
         return totals
     
     def _compare_stat_totals(self, my_stats, other_stats):
-        """Compare stat totals and return ALL 9 categories with +/- values"""
+        """Compare stat totals and return ALL 9 categories with +/- values (handles None)"""
         all_categories = []
         improvements = []
         declines = []
         
-        # Calculate FG% and FT% from made/attempts
-        my_fg_pct = (my_stats.get('field_goals', 0) / my_stats.get('field_goal_attempts', 1)) if my_stats.get('field_goal_attempts', 0) > 0 else 0
-        other_fg_pct = (other_stats.get('field_goals', 0) / other_stats.get('field_goal_attempts', 1)) if other_stats.get('field_goal_attempts', 0) > 0 else 0
+        # Helper to safely get numeric values
+        def get_val(stats, key, default=0):
+            val = stats.get(key, default)
+            return float(val) if val is not None else default
         
-        my_ft_pct = (my_stats.get('free_throws', 0) / my_stats.get('free_throw_attempts', 1)) if my_stats.get('free_throw_attempts', 0) > 0 else 0
-        other_ft_pct = (other_stats.get('free_throws', 0) / other_stats.get('free_throw_attempts', 1)) if other_stats.get('free_throw_attempts', 0) > 0 else 0
+        # Calculate FG% and FT% from made/attempts
+        my_fg = get_val(my_stats, 'field_goals', 0)
+        my_fga = get_val(my_stats, 'field_goal_attempts', 1)
+        my_fg_pct = (my_fg / my_fga) if my_fga > 0 else 0
+        
+        other_fg = get_val(other_stats, 'field_goals', 0)
+        other_fga = get_val(other_stats, 'field_goal_attempts', 1)
+        other_fg_pct = (other_fg / other_fga) if other_fga > 0 else 0
+        
+        my_ft = get_val(my_stats, 'free_throws', 0)
+        my_fta = get_val(my_stats, 'free_throw_attempts', 1)
+        my_ft_pct = (my_ft / my_fta) if my_fta > 0 else 0
+        
+        other_ft = get_val(other_stats, 'free_throws', 0)
+        other_fta = get_val(other_stats, 'free_throw_attempts', 1)
+        other_ft_pct = (other_ft / other_fta) if other_fta > 0 else 0
         
         # All 9 fantasy categories
         categories = [
-            ('points', 'PTS', False, my_stats.get('points', 0), other_stats.get('points', 0)),
-            ('rebounds', 'REB', False, my_stats.get('rebounds', 0), other_stats.get('rebounds', 0)),
-            ('assists', 'AST', False, my_stats.get('assists', 0), other_stats.get('assists', 0)),
-            ('steals', 'STL', False, my_stats.get('steals', 0), other_stats.get('steals', 0)),
-            ('blocks', 'BLK', False, my_stats.get('blocks', 0), other_stats.get('blocks', 0)),
-            ('three_pointers_made', '3PM', False, my_stats.get('three_pointers_made', 0), other_stats.get('three_pointers_made', 0)),
+            ('points', 'PTS', False, get_val(my_stats, 'points'), get_val(other_stats, 'points')),
+            ('rebounds', 'REB', False, get_val(my_stats, 'rebounds'), get_val(other_stats, 'rebounds')),
+            ('assists', 'AST', False, get_val(my_stats, 'assists'), get_val(other_stats, 'assists')),
+            ('steals', 'STL', False, get_val(my_stats, 'steals'), get_val(other_stats, 'steals')),
+            ('blocks', 'BLK', False, get_val(my_stats, 'blocks'), get_val(other_stats, 'blocks')),
+            ('three_pointers_made', '3PM', False, get_val(my_stats, 'three_pointers_made'), get_val(other_stats, 'three_pointers_made')),
             ('fg_percentage', 'FG%', True, my_fg_pct, other_fg_pct),
             ('ft_percentage', 'FT%', True, my_ft_pct, other_ft_pct),
-            ('turnovers', 'TO', False, my_stats.get('turnovers', 0), other_stats.get('turnovers', 0))
+            ('turnovers', 'TO', False, get_val(my_stats, 'turnovers'), get_val(other_stats, 'turnovers'))
         ]
         
         for stat_key, display_name, is_percentage, my_val, other_val in categories:

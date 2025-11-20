@@ -281,10 +281,16 @@ def recommendations_page():
         session.pop('total_credit', None)
         session.pop('team_credits', None)
         
+        # Handle yahoo-matchup mode - use 2025-26 data for player stats
+        actual_season = season
+        if season == 'yahoo-matchup':
+            actual_season = '2025-26'
+            app.logger.info(f"[RECOMMENDATIONS] Yahoo Matchup Stats mode active, using {actual_season} data")
+        
         # Get all players for recommendations
-        # For 2025-26, use all players (no min_games filter)
-        min_games = 0 if season == '2025-26' else 20
-        all_players = data_manager.get_all_nba_players(season=season, min_games=min_games)
+        # For 2025-26 and yahoo-matchup, use all players (no min_games filter)
+        min_games = 0 if season in ['2025-26', 'yahoo-matchup'] else 20
+        all_players = data_manager.get_all_nba_players(season=actual_season, min_games=min_games)
         
         # Get ONLY Yahoo team (no demo mode)
         yahoo_my_team = session.get('yahoo_my_team_roster', [])  # List of player names from Yahoo
