@@ -134,7 +134,22 @@
                                         <i class="fas fa-lightbulb text-warning"></i> Team Move
                                     {% endif %}
                                     
-                                    {% if rec.impact_score %}
+                                    {% if rec.type == 'trade' and rec.win_probability_before is defined and rec.win_probability_after is defined %}
+                                        <span class="badge bg-primary ms-2">
+                                            <i class="fas fa-percentage"></i> Win Prob: {{ rec.win_probability_before }}% → {{ rec.win_probability_after }}% 
+                                            ({% if rec.win_prob_change >= 0 %}+{% endif %}{{ rec.win_prob_change }}%)
+                                        </span>
+                                        {% if rec.beneficial_for_both %}
+                                        <span class="badge bg-success ms-1">
+                                            <i class="fas fa-check-double"></i> Win-Win Trade
+                                        </span>
+                                        {% endif %}
+                                        {% if rec.plausibility %}
+                                        <span class="badge bg-info text-dark ms-1">
+                                            <i class="fas fa-balance-scale"></i> Plausibility: {{ rec.plausibility }}
+                                        </span>
+                                        {% endif %}
+                                    {% elif rec.impact_score %}
                                         <span class="badge bg-success ms-2">Impact: +{{ rec.impact_score }}</span>
                                     {% endif %}
                                 </h6>

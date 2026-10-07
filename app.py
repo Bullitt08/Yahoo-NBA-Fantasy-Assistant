@@ -1,6 +1,14 @@
 """
 Yahoo NBA Fantasy Assistant - Main Flask Application
 """
+import sys
+import io
+
+# Fix emoji/unicode output on Windows terminals (e.g. Turkish cp1254)
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 from flask import Flask, render_template, session, redirect, url_for, request, jsonify
 import os
@@ -11,6 +19,7 @@ from data import DataManager
 from draft import DraftAssistant
 from simulation import MatchupSimulator
 from recommendation import RecommendationEngine
+from season_config import sort_seasons_descending, season_to_year
 from routes.nba_routes import nba_bp
 from yahoo_integration.routes import yahoo_bp
 
@@ -18,7 +27,29 @@ from yahoo_integration.routes import yahoo_bp
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
+
+# Security & Session Configuration
+secret_key = os.getenv('FLASK_SECRET_KEY')
+if not secret_key:
+    if os.getenv('FLASK_ENV') == 'production':
+        raise RuntimeError("FLASK_SECRET_KEY environment variable must be set in production mode!")
+    secret_key = 'dev-key-change-in-production'
+
+app.secret_key = secret_key
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=(os.getenv('FLASK_ENV') == 'production' or os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true')
+)
+
+@app.after_request
+def set_security_headers(response):
+    """Set standard HTTP security headers"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
 
 # Register blueprints
 app.register_blueprint(nba_bp)
@@ -35,12 +66,27 @@ matchup_simulator = MatchupSimulator()
 recommendation_engine = RecommendationEngine(data_manager, matchup_simulator, draft_assistant)
 
 
+@app.context_processor
+def inject_season_context():
+    available = sort_seasons_descending(data_manager.available_seasons)
+    current = data_manager.current_season
+    selected = request.args.get('season') or session.get('selected_season') or current
+    mode = request.args.get('mode') or session.get('selected_mode') or 'per_game'
+    return {
+        'available_seasons': available,
+        'current_nba_season': current,
+        'selected_season': selected,
+        'current_mode': mode,
+        'mode': mode
+    }
+
+
 @app.route('/')
 def index():
     """Main dashboard page - Yahoo Fantasy League focused"""
     try:
-        # Get season from query parameter or default to 2025-26
-        season = request.args.get('season', '2025-26')
+        # Get season from query parameter or default to current season
+        season = request.args.get('season', data_manager.current_season)
         
         # Check if Yahoo Matchup Stats is selected
         yahoo_matchup_stats = None
@@ -54,20 +100,39 @@ def index():
             app.logger.info(f"[INDEX] Yahoo Matchup Stats mode active: {yahoo_matchup_stats is not None}")
             app.logger.info(f"[INDEX] Yahoo My Team Stats: {yahoo_my_team_stats is not None}")
             app.logger.info(f"[INDEX] Current week: {yahoo_current_week}")
-            # Use 2025-26 data for player stats even in yahoo-matchup mode
-            actual_season = '2025-26'
+            # Use current season data for player stats even in yahoo-matchup mode
+            actual_season = data_manager.current_season
+        
+        mode = request.args.get('mode') or session.get('selected_mode') or 'per_game'
+        session['selected_mode'] = mode
         
         # Get real stats from database - all players
-        # For 2025-26 season (upcoming), don't filter by games_played since season hasn't started
-        min_games = 0 if actual_season in ['2025-26', 'yahoo-matchup'] else 1
+        min_games = 0 if actual_season in [data_manager.current_season, 'yahoo-matchup'] else 1
         all_players = data_manager.get_all_nba_players(season=actual_season, min_games=min_games)
         
         # Get top performers (filter players with at least 20 games for accurate stats)
-        # For 2025-26 and yahoo-matchup, use all players since it's based on projections/previous season
-        qualified_players = all_players if actual_season in ['2025-26', 'yahoo-matchup'] else [p for p in all_players if p.get('games_played', 0) >= 20]
-        top_scorers = sorted(qualified_players, key=lambda x: x['stats'].get('points', 0), reverse=True)[:10]
-        top_rebounders = sorted(qualified_players, key=lambda x: x['stats'].get('rebounds', 0), reverse=True)[:10]
-        top_assisters = sorted(qualified_players, key=lambda x: x['stats'].get('assists', 0), reverse=True)[:10]
+        qualified_players = all_players if actual_season in [data_manager.current_season, 'yahoo-matchup'] else [p for p in all_players if p.get('games_played', 0) >= 20]
+        
+        if mode == 'total':
+            top_scorers = sorted(
+                qualified_players,
+                key=lambda x: x.get('total_stats', {}).get('points', (x.get('stats', {}).get('points', 0) * x.get('games_played', 0))) or 0,
+                reverse=True
+            )[:10]
+            top_rebounders = sorted(
+                qualified_players,
+                key=lambda x: x.get('total_stats', {}).get('rebounds', (x.get('stats', {}).get('rebounds', 0) * x.get('games_played', 0))) or 0,
+                reverse=True
+            )[:10]
+            top_assisters = sorted(
+                qualified_players,
+                key=lambda x: x.get('total_stats', {}).get('assists', (x.get('stats', {}).get('assists', 0) * x.get('games_played', 0))) or 0,
+                reverse=True
+            )[:10]
+        else:
+            top_scorers = sorted(qualified_players, key=lambda x: x['stats'].get('points', 0) or 0, reverse=True)[:10]
+            top_rebounders = sorted(qualified_players, key=lambda x: x['stats'].get('rebounds', 0) or 0, reverse=True)[:10]
+            top_assisters = sorted(qualified_players, key=lambda x: x['stats'].get('assists', 0) or 0, reverse=True)[:10]
         
         stats_summary = {
             'total_players': len(all_players),
@@ -75,20 +140,22 @@ def index():
             'available_seasons': data_manager.available_seasons,
             'top_scorers': top_scorers,
             'top_rebounders': top_rebounders,
-            'top_assisters': top_assisters
+            'top_assisters': top_assisters,
+            'mode': mode
         }
         
-        # Clear ALL demo session data on every page load
-        session.pop('my_team', None)
-        session.pop('total_credit', None)
+        # Clear demo session credits if not in draft mode, but preserve draft assistant team
+        session.pop('opponent_team', None)
         session.pop('team_credits', None)
         
-        # Get user's team - ONLY Yahoo team, NO demo mode
+        # Get user's team - check Yahoo team first, then draft assistant team
         my_team = []
         yahoo_my_team = session.get('yahoo_my_team_roster', [])
         
         if yahoo_my_team:
             my_team = yahoo_my_team
+        elif session.get('my_team'):
+            my_team = [p['name'] if isinstance(p, dict) else str(p) for p in session.get('my_team', [])]
         
         # Get full player data for my team
         my_roster = []
@@ -101,6 +168,7 @@ def index():
                              my_roster=my_roster,
                              all_players=qualified_players,
                              season=season,
+                             mode=mode,
                              yahoo_matchup_stats=yahoo_matchup_stats,
                              yahoo_my_team_stats=yahoo_my_team_stats,
                              yahoo_current_week=yahoo_current_week)
@@ -136,15 +204,31 @@ def callback():
 def draft_page():
     """Draft assistant page with real data - all active players"""
     try:
-        # Get season from query parameter or default to 2025-26
-        season = request.args.get('season', '2025-26')
+        # Get season from query parameter or default to current season
+        season = request.args.get('season', data_manager.current_season)
+        strategy = request.args.get('strategy', 'balanced')
+        mode = request.args.get('mode') or session.get('selected_mode') or 'per_game'
+        session['selected_mode'] = mode
+        sort_cat = request.args.get('sort_cat') or request.args.get('sort_category')
+        sort_dir = request.args.get('sort_dir') or request.args.get('sort_direction', 'desc')
+        categories_str = request.args.get('categories', '')
+        target_categories = [c.strip().upper() for c in categories_str.split(',') if c.strip()] if categories_str else None
         
-        # Temporarily set data_manager season for draft analysis
-        original_season = data_manager.current_season
-        data_manager.current_season = season
+        # Load league auction values from session if available
+        league_auction_values = session.get('league_auction_values', {})
+        if league_auction_values:
+            draft_assistant.set_league_auction_values(league_auction_values)
         
-        # Get all draft recommendations (no limit)
-        rankings = draft_assistant.get_draft_rankings(top_n=None)
+        # Get all draft recommendations with selected season, strategy, mode, and category sort
+        rankings = draft_assistant.get_draft_rankings(
+            top_n=None,
+            season=season,
+            strategy=strategy,
+            target_categories=target_categories,
+            mode=mode,
+            sort_category=sort_cat,
+            sort_direction=sort_dir
+        )
         
         # Get position-specific rankings
         positions = ['PG', 'SG', 'SF', 'PF', 'C']
@@ -154,20 +238,29 @@ def draft_page():
         
         # Get user's credit info
         my_team = session.get('my_team', [])
-        total_credit = session.get('total_credit', 0)
+        total_credit = sum(p.get('credit', 0) for p in my_team) if my_team else 0
+        session['total_credit'] = total_credit
         remaining_credit = 200 - total_credit
         
-        # Restore original season
-        data_manager.current_season = original_season
+        # Dynamic relative season weights
+        from season_config import get_relative_season_weights
+        season_weights = get_relative_season_weights(season)
         
         return render_template('draft.html', 
                              rankings=rankings,
                              position_rankings=position_rankings,
                              total_players=len(rankings),
                              season=season,
+                             strategy=strategy,
+                             mode=mode,
+                             sort_cat=sort_cat,
+                             sort_dir=sort_dir,
+                             target_categories=target_categories or [],
+                             season_weights=season_weights,
                              my_team=my_team,
                              total_credit=total_credit,
-                             remaining_credit=remaining_credit)
+                             remaining_credit=remaining_credit,
+                             league_auction_values=league_auction_values)
     except Exception as e:
         app.logger.error(f"Error loading draft page: {e}")
         return render_template('error.html', error=f"Draft analysis error: {str(e)}")
@@ -187,14 +280,15 @@ def sort_roster_by_position(roster):
 @app.route('/matchup')
 def matchup_page():
     """Matchup simulation page with Yahoo Fantasy teams"""
+    original_season = data_manager.current_season
     try:
-        # Get season from query parameter or default to 2025-26
-        season = request.args.get('season', '2025-26')
+        # Determine season: query param > session draft/matchup season > data_manager.current_season
+        season = request.args.get('season')
+        if not season:
+            season = session.get('matchup_season') or session.get('draft_season') or data_manager.current_season
         
-        # Clear demo session data
-        session.pop('my_team', None)
+        # Clear opponent session data only if requested, preserve draft team
         session.pop('opponent_team', None)
-        session.pop('total_credit', None)
         session.pop('team_credits', None)
         
         # Check if Yahoo Matchup Stats is selected
@@ -210,39 +304,99 @@ def matchup_page():
             yahoo_current_week = session.get('yahoo_current_week')
             app.logger.info(f"[MATCHUP] Yahoo Matchup Stats mode active: {yahoo_matchup_stats is not None}")
             app.logger.info(f"[MATCHUP] Current week: {yahoo_current_week}")
-            app.logger.info(f"[MATCHUP] My team stats keys: {list(yahoo_my_team_stats.keys()) if yahoo_my_team_stats else []}")
-            app.logger.info(f"[MATCHUP] My team PTS: {yahoo_my_team_stats.get('12', 'N/A')}, REB: {yahoo_my_team_stats.get('15', 'N/A')}, 3PM: {yahoo_my_team_stats.get('10', 'N/A')}")
-            app.logger.info(f"[MATCHUP] Opponent stats keys: {list(yahoo_opponent_team_stats.keys()) if yahoo_opponent_team_stats else []}")
-            app.logger.info(f"[MATCHUP] Opponent PTS: {yahoo_opponent_team_stats.get('12', 'N/A')}, REB: {yahoo_opponent_team_stats.get('15', 'N/A')}, 3PM: {yahoo_opponent_team_stats.get('10', 'N/A')}")
-            # Use 2025-26 data for simulation even in yahoo-matchup mode
-            actual_season = '2025-26'
+            actual_season = data_manager.current_season
         
         # Temporarily set data_manager season for simulation
-        original_season = data_manager.current_season
         data_manager.current_season = actual_season
         
-        # Get all players for roster building
-        # For 2025-26, use all players (no min_games filter)
-        min_games = 0 if season in ['2025-26', 'yahoo-matchup'] else 20
-        all_players = data_manager.get_all_nba_players(season='2025-26' if season == 'yahoo-matchup' else season, min_games=min_games)
+        # Get all players for roster building (min_games=0 so no players are excluded)
+        all_players = data_manager.get_all_nba_players(season=actual_season, min_games=0)
         
-        # Get ONLY Yahoo teams (no demo mode)
-        yahoo_my_team = session.get('yahoo_my_team_roster', [])  # List of player names from Yahoo
+        # If requested season has no real players (e.g. empty future season), fallback to populated season
+        if not all_players or len(all_players) <= 5:
+            populated_season = (getattr(data_manager, '_discovered_seasons', None) or ['2025-26', '2024-25'])[0]
+            if actual_season != populated_season:
+                app.logger.info(f"[MATCHUP] Season {actual_season} has only {len(all_players)} players, falling back to {populated_season}")
+                actual_season = populated_season
+                data_manager.current_season = actual_season
+                all_players = data_manager.get_all_nba_players(season=actual_season, min_games=0)
+        
+        # Get Yahoo teams or draft assistant team
+        yahoo_my_team = session.get('yahoo_my_team_roster', [])
         yahoo_opponent_team = session.get('yahoo_opponent_team_roster', [])
         
         app.logger.info(f"[MATCHUP] My team roster: {len(yahoo_my_team)} players - {yahoo_my_team}")
         app.logger.info(f"[MATCHUP] Opponent roster: {len(yahoo_opponent_team)} players - {yahoo_opponent_team}")
         
-        # Get full player data for Yahoo teams
-        my_roster = [p for p in all_players if p['name'] in yahoo_my_team] if yahoo_my_team else []
-        opponent_roster = [p for p in all_players if p['name'] in yahoo_opponent_team] if yahoo_opponent_team else []
+        # Robust player resolver with case-insensitivity, suffix normalization, and session fallback
+        import re
+        def strip_suffix(n):
+            return re.sub(r'\b(jr\.?|sr\.?|ii|iii|iv)\b', '', str(n).lower()).strip()
+        
+        def resolve_roster(team_names, is_my_team=False):
+            if not team_names:
+                return []
+            
+            exact_map = {p['name'].strip().lower(): p for p in all_players}
+            suffix_map = {strip_suffix(p['name']): p for p in all_players}
+            
+            # Map of full player profiles from session draft team if available
+            saved_team_map = {}
+            if is_my_team and session.get('my_team'):
+                for sp in session.get('my_team'):
+                    if isinstance(sp, dict) and sp.get('name'):
+                        saved_team_map[sp['name'].strip().lower()] = sp
+                        saved_team_map[strip_suffix(sp['name'])] = sp
+            
+            resolved = []
+            for item in team_names:
+                name = item if isinstance(item, str) else (item.get('name') if isinstance(item, dict) else str(item))
+                if not name:
+                    continue
+                norm = name.strip().lower()
+                clean = strip_suffix(name)
+                
+                matched = exact_map.get(norm) or suffix_map.get(clean)
+                
+                if not matched and is_my_team:
+                    matched = saved_team_map.get(norm) or saved_team_map.get(clean)
+                    
+                if not matched:
+                    # Search fallback seasons in database
+                    for fb in (getattr(data_manager, '_discovered_seasons', None) or ['2025-26', '2024-25', '2023-24']):
+                        if fb != actual_season:
+                            fb_pool = data_manager.get_all_nba_players(season=fb, min_games=0)
+                            for fp in fb_pool:
+                                if fp['name'].strip().lower() == norm or strip_suffix(fp['name']) == clean:
+                                    matched = fp
+                                    break
+                            if matched:
+                                break
+                                
+                if matched:
+                    resolved.append(dict(matched))
+                elif isinstance(item, dict) and item.get('name'):
+                    resolved.append(dict(item))
+                else:
+                    resolved.append({
+                        'name': name.strip(),
+                        'position': 'UTIL',
+                        'team': 'NBA',
+                        'stats': {'points': 12.0, 'rebounds': 4.5, 'assists': 2.5, 'steals': 0.8, 'blocks': 0.5, 'fg3m': 1.2, 'fg_percentage': 0.46, 'ft_percentage': 0.78, 'turnovers': 1.5}
+                    })
+            return resolved
+
+        my_roster = resolve_roster(yahoo_my_team, is_my_team=True)
+        opponent_roster = resolve_roster(yahoo_opponent_team, is_my_team=False)
         
         app.logger.info(f"[MATCHUP] My roster matched: {len(my_roster)} players")
         app.logger.info(f"[MATCHUP] Opponent matched: {len(opponent_roster)} players")
         
-        # Sort both rosters by position
-        my_roster = sort_roster_by_position(my_roster)
-        opponent_roster = sort_roster_by_position(opponent_roster)
+        # Assign slots and sort both rosters in standard roster slot order
+        if my_roster:
+            my_roster = draft_assistant._assign_roster_slots(my_roster, len(my_roster))
+        if opponent_roster:
+            opponent_roster = draft_assistant._assign_roster_slots(opponent_roster, len(opponent_roster))
         
         # Run simulation only if both teams are set
         simulation_results = None
@@ -257,13 +411,15 @@ def matchup_page():
                              my_roster=my_roster,
                              opponent_roster=opponent_roster,
                              simulation=simulation_results,
-                             season=season,
+                             season=actual_season,
+                             available_seasons=data_manager.available_seasons,
+                             draft_assistant_roster=session.get('draft_assistant_roster', []),
+                             yahoo_my_team_name=session.get('yahoo_my_team_name', 'My Team'),
                              yahoo_matchup_stats=yahoo_matchup_stats,
                              yahoo_my_team_stats=yahoo_my_team_stats,
                              yahoo_opponent_team_stats=yahoo_opponent_team_stats,
                              yahoo_current_week=yahoo_current_week)
     except Exception as e:
-        # Restore original season even on error
         data_manager.current_season = original_season
         app.logger.error(f"Error loading matchup page: {e}")
         return render_template('error.html', error=f"Matchup simulation error: {str(e)}")
@@ -273,23 +429,22 @@ def matchup_page():
 def recommendations_page():
     """Roster recommendations page with Yahoo Fantasy team analysis"""
     try:
-        # Get season from query parameter or default to 2025-26
-        season = request.args.get('season', '2025-26')
+        # Get season from query parameter or default to current season
+        season = request.args.get('season', data_manager.current_season)
         
         # Clear demo session data
         session.pop('my_team', None)
         session.pop('total_credit', None)
         session.pop('team_credits', None)
         
-        # Handle yahoo-matchup mode - use 2025-26 data for player stats
+        # Handle yahoo-matchup mode - use current season data for player stats
         actual_season = season
         if season == 'yahoo-matchup':
-            actual_season = '2025-26'
+            actual_season = data_manager.current_season
             app.logger.info(f"[RECOMMENDATIONS] Yahoo Matchup Stats mode active, using {actual_season} data")
         
         # Get all players for recommendations
-        # For 2025-26 and yahoo-matchup, use all players (no min_games filter)
-        min_games = 0 if season in ['2025-26', 'yahoo-matchup'] else 20
+        min_games = 0 if season in [data_manager.current_season, 'yahoo-matchup'] else 20
         all_players = data_manager.get_all_nba_players(season=actual_season, min_games=min_games)
         
         # Get ONLY Yahoo team (no demo mode)
@@ -464,7 +619,8 @@ def player_api(player_id):
 def api_draft_player(player_id):
     """API endpoint to get draft analysis details for a player."""
     try:
-        analysis = draft_assistant.build_player_analysis(player_id)
+        season = request.args.get('season', data_manager.current_season)
+        analysis = draft_assistant.build_player_analysis(player_id, season=season)
         if not analysis:
             return jsonify({'success': False, 'error': 'Player not found'}), 404
         return jsonify({'success': True, 'analysis': analysis})
@@ -476,8 +632,9 @@ def api_draft_player(player_id):
 def api_draft_compare():
     """API endpoint to compare multiple players"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         player_ids = data.get('player_ids', [])
+        season = data.get('season') or request.args.get('season', data_manager.current_season)
         
         if not player_ids or len(player_ids) < 2:
             return jsonify({'success': False, 'error': 'Please select at least 2 players'}), 400
@@ -487,7 +644,7 @@ def api_draft_compare():
         
         comparisons = []
         for player_id in player_ids:
-            analysis = draft_assistant.build_player_analysis(player_id)
+            analysis = draft_assistant.build_player_analysis(player_id, season=season)
             if analysis:
                 comparisons.append(analysis)
         
@@ -502,16 +659,302 @@ def api_draft_compare():
 
 @app.route('/api/draft/rankings')
 def api_draft_rankings():
-    """API endpoint to get draft rankings with credits"""
+    """API endpoint to get draft rankings with credits, strategy, mode, and category sort support"""
     try:
-        rankings = draft_assistant.get_draft_rankings(top_n=None)
+        season = request.args.get('season', data_manager.current_season)
+        strategy = request.args.get('strategy', 'balanced')
+        mode = request.args.get('mode', 'per_game')
+        sort_cat = request.args.get('sort_cat') or request.args.get('sort_category')
+        sort_dir = request.args.get('sort_dir') or request.args.get('sort_direction', 'desc')
+        categories_str = request.args.get('categories', '')
+        target_categories = [c.strip().upper() for c in categories_str.split(',') if c.strip()] if categories_str else None
+        
+        league_auction_values = session.get('league_auction_values', {})
+        if league_auction_values:
+            draft_assistant.set_league_auction_values(league_auction_values)
+            
+        rankings = draft_assistant.get_draft_rankings(
+            top_n=None,
+            season=season,
+            strategy=strategy,
+            target_categories=target_categories,
+            mode=mode,
+            sort_category=sort_cat,
+            sort_direction=sort_dir
+        )
         return jsonify({
             'success': True,
             'rankings': rankings,
-            'count': len(rankings)
+            'count': len(rankings),
+            'season': season,
+            'strategy': strategy,
+            'mode': mode,
+            'sort_cat': sort_cat,
+            'sort_dir': sort_dir
         })
     except Exception as e:
         app.logger.error(f"Error fetching rankings: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/draft/optimize', methods=['POST'])
+def api_draft_optimize():
+    """Run Monte Carlo draft roster optimization under strategy and budget constraints"""
+    try:
+        data = request.get_json() or {}
+        budget = float(data.get('budget', 200.0))
+        roster_size = int(data.get('roster_size', 15))
+        strategy = data.get('strategy', 'balanced')
+        mode = data.get('mode') or session.get('selected_mode') or 'per_game'
+        target_categories = data.get('target_categories')
+        existing_roster = data.get('existing_roster') or session.get('my_team', [])
+        num_simulations = int(data.get('num_simulations', 150))
+        season = data.get('season', data_manager.current_season)
+        
+        league_auction_values = session.get('league_auction_values', {})
+        if league_auction_values:
+            draft_assistant.set_league_auction_values(league_auction_values)
+            
+        objective_weights = data.get('objective_weights')
+        result = draft_assistant.optimize_draft_roster(
+            budget=budget,
+            roster_size=roster_size,
+            strategy=strategy,
+            target_categories=target_categories,
+            existing_roster=existing_roster,
+            num_simulations=num_simulations,
+            season=season,
+            mode=mode,
+            objective_weights=objective_weights
+        )
+        return jsonify(result)
+    except Exception as e:
+        app.logger.error(f"Error in draft optimization: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/draft/auction-values', methods=['GET', 'POST'])
+def api_draft_auction_values():
+    """Get or update league-specific auction values"""
+    try:
+        if request.method == 'POST':
+            data = request.get_json() or {}
+            prices = data.get('prices', {})
+            current_prices = session.get('league_auction_values', {})
+            current_prices.update(prices)
+            session['league_auction_values'] = current_prices
+            draft_assistant.set_league_auction_values(current_prices)
+            return jsonify({'success': True, 'prices': current_prices})
+        else:
+            current_prices = session.get('league_auction_values', {})
+            return jsonify({'success': True, 'prices': current_prices})
+    except Exception as e:
+        app.logger.error(f"Error handling auction values: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/draft/auction-values/reset-player', methods=['POST'])
+def api_draft_reset_player_auction_value():
+    """Reset a single player's league auction override back to model value"""
+    try:
+        data = request.get_json() or {}
+        player_name = data.get('player_name') or data.get('name')
+        if not player_name:
+            return jsonify({'success': False, 'error': 'Player name required'}), 400
+            
+        current_prices = session.get('league_auction_values', {})
+        draft_assistant.reset_league_auction_value(player_name)
+        keys_to_remove = [k for k in current_prices if str(k).strip().lower() == str(player_name).strip().lower()]
+        for k in keys_to_remove:
+            current_prices.pop(k, None)
+        session['league_auction_values'] = current_prices
+        return jsonify({'success': True, 'player_name': player_name, 'prices': current_prices})
+    except Exception as e:
+        app.logger.error(f"Error resetting player auction price: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/draft/auction-values/reset-all', methods=['POST'])
+def api_draft_reset_all_auction_values():
+    """Reset all league auction overrides back to model values"""
+    try:
+        session.pop('league_auction_values', None)
+        draft_assistant.clear_all_league_auction_values()
+        return jsonify({'success': True, 'prices': {}})
+    except Exception as e:
+        app.logger.error(f"Error resetting all auction prices: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/draft/my-team', methods=['GET'])
+def api_draft_get_my_team():
+    """Get current draft assistant team and credit status"""
+    my_team = session.get('my_team', [])
+    total_credit = sum(p.get('credit', 0) for p in my_team) if my_team else 0
+    remaining_credit = 200 - total_credit
+    return jsonify({
+        'success': True,
+        'team': my_team,
+        'total_credit': total_credit,
+        'remaining_credit': remaining_credit
+    })
+
+
+@app.route('/api/draft/add-player', methods=['POST'])
+def api_draft_add_player():
+    """Add a player to the user's draft team with credit and roster size validation"""
+    try:
+        data = request.get_json() or {}
+        player_name = data.get('name') or data.get('player_name')
+        player_id = data.get('player_id')
+        player_credit = int(float(data.get('credit', 1)))
+        player_pos = data.get('position', 'UTIL')
+        player_team = data.get('team', '')
+        
+        if not player_name:
+            return jsonify({'success': False, 'error': 'Player name required'}), 400
+            
+        my_team = session.get('my_team', [])
+        
+        # Check if already added
+        if any(p.get('name') == player_name for p in my_team):
+            return jsonify({'success': False, 'error': f"{player_name} is already on your team."}), 400
+            
+        # Max roster size check (15 players)
+        if len(my_team) >= 15:
+            return jsonify({'success': False, 'error': 'Roster is full (maximum 15 players).'}), 400
+            
+        # Credit budget check
+        current_used = sum(p.get('credit', 0) for p in my_team)
+        if current_used + player_credit > 200:
+            return jsonify({'success': False, 'error': f"Insufficient budget! Player costs ${player_credit}, but only ${200 - current_used} remaining."}), 400
+            
+        new_player = {
+            'player_id': player_id,
+            'name': player_name,
+            'position': player_pos,
+            'team': player_team,
+            'credit': player_credit
+        }
+        
+        # Enrich new player with statistical profile if available
+        if player_id or player_name:
+            analysis = draft_assistant.build_player_analysis(player_id or player_name)
+            if analysis:
+                new_player['weighted_stats'] = analysis.get('weighted_stats', {})
+                new_player['stats'] = analysis.get('current_season_stats', {})
+                new_player['total_stats'] = analysis.get('total_stats', {})
+        
+        my_team.append(new_player)
+        total_credit = sum(p.get('credit', 0) for p in my_team)
+        remaining_credit = 200 - total_credit
+        
+        session['my_team'] = my_team
+        session['total_credit'] = total_credit
+        session['draft_assistant_roster'] = [p['name'] for p in my_team]
+        
+        return jsonify({
+            'success': True,
+            'team': my_team,
+            'total_credit': total_credit,
+            'remaining_credit': remaining_credit
+        })
+    except Exception as e:
+        app.logger.error(f"Error adding player to draft team: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/draft/remove-player', methods=['POST'])
+def api_draft_remove_player():
+    """Remove a player from the user's draft team"""
+    try:
+        data = request.get_json() or {}
+        player_name = data.get('name') or data.get('player_name')
+        if not player_name:
+            return jsonify({'success': False, 'error': 'Player name required'}), 400
+            
+        my_team = session.get('my_team', [])
+        my_team = [p for p in my_team if p.get('name') != player_name]
+        total_credit = sum(p.get('credit', 0) for p in my_team)
+        remaining_credit = 200 - total_credit
+        
+        session['my_team'] = my_team
+        session['total_credit'] = total_credit
+        session['draft_assistant_roster'] = [p['name'] for p in my_team]
+        
+        return jsonify({
+            'success': True,
+            'team': my_team,
+            'total_credit': total_credit,
+            'remaining_credit': remaining_credit
+        })
+    except Exception as e:
+        app.logger.error(f"Error removing player from draft team: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/draft/clear-team', methods=['POST'])
+def api_draft_clear_team():
+    """Clear all players from user's draft team"""
+    try:
+        session['my_team'] = []
+        session['total_credit'] = 0
+        session['draft_assistant_roster'] = []
+        return jsonify({'success': True, 'team': [], 'total_credit': 0, 'remaining_credit': 200})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/draft/save-draft-roster', methods=['POST'])
+def api_draft_save_draft_roster():
+    """Save the current draft roster so it can be selected as 'My Team' in Matchup Simulator"""
+    try:
+        my_team = session.get('my_team', [])
+        player_names = [p['name'] for p in my_team] if my_team else []
+        if not player_names:
+            return jsonify({'success': False, 'error': 'Draft team is empty. Please add players first.'}), 400
+            
+        session['draft_assistant_roster'] = player_names
+        # Also sync to active My Team for matchup simulator
+        session['yahoo_my_team_roster'] = player_names
+        session['yahoo_my_team_name'] = "My Draft Team"
+        session['yahoo_my_team_logo'] = ""
+        
+        return jsonify({
+            'success': True,
+            'team_name': 'My Draft Team',
+            'player_count': len(player_names),
+            'players': player_names
+        })
+    except Exception as e:
+        app.logger.error(f"Error saving draft roster: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/matchup/select-draft-team', methods=['POST'])
+def api_matchup_select_draft_team():
+    """Activate the saved draft roster as 'My Team' for Matchup Simulator"""
+    try:
+        draft_names = session.get('draft_assistant_roster', [])
+        if not draft_names and session.get('my_team'):
+            draft_names = [p['name'] if isinstance(p, dict) else str(p) for p in session.get('my_team', [])]
+            session['draft_assistant_roster'] = draft_names
+            
+        if not draft_names:
+            return jsonify({'success': False, 'error': 'No draft team found. Build one in Draft Assistant first.'}), 400
+            
+        session['yahoo_my_team_roster'] = draft_names
+        session['yahoo_my_team_name'] = "My Draft Team"
+        session['yahoo_my_team_logo'] = ""
+        season = session.get('draft_season') or session.get('matchup_season') or data_manager.current_season
+        session['matchup_season'] = season
+        return jsonify({
+            'success': True,
+            'team_name': 'My Draft Team',
+            'players': draft_names,
+            'season': season
+        })
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -590,8 +1033,9 @@ def api_save_team():
             return jsonify({'success': False, 'error': 'Maksimum 15 oyuncu seçebilirsiniz'}), 400
         
         # Get all players and calculate total credit
-        all_players = data_manager.get_all_nba_players(season='2024-25', min_games=0)
-        rankings = draft_assistant.get_draft_rankings(top_n=None)
+        season = data.get('season') or data_manager.current_season
+        all_players = data_manager.get_all_nba_players(season=season, min_games=0)
+        rankings = draft_assistant.get_draft_rankings(top_n=None, season=season)
         
         total_credit = 0
         selected_players_data = []
@@ -655,6 +1099,11 @@ def api_save_opponent():
             return jsonify({'success': False, 'error': 'Maximum 15 players allowed'}), 400
         
         session['opponent_team'] = team
+        session['yahoo_opponent_team_roster'] = team
+        session['yahoo_opponent_team_name'] = 'Opponent Team'
+        session['yahoo_opponent_is_manual'] = True
+        if not team:
+            session.pop('yahoo_opponent_team_stats', None)
         return jsonify({'success': True, 'team_size': len(team)})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -816,158 +1265,195 @@ def api_save_yahoo_matchup():
 
 @app.route('/api/random-opponent', methods=['POST'])
 def api_random_opponent():
-    """Generate random opponent team (10 players with 180-200 credits, position balanced)"""
+    """Generate random opponent team (13 players with ~195-200 credits, position balanced, with marquee stars)"""
     try:
         import random
-        all_players = data_manager.get_all_nba_players(season='2024-25', min_games=20)
-        my_team = session.get('my_team', [])
-        
-        # Filter out user's players and calculate credits for all
-        available_players = []
-        for p in all_players:
-            if p['name'] not in my_team:
-                credit = draft_assistant.calculate_player_credit(p.get('stats', {}), p.get('minutes', 0))
-                p['credit'] = credit
-                available_players.append(p)
-        
-        # Group players by position and sort by credit
-        by_position = {
-            'PG': sorted([p for p in available_players if 'PG' in p.get('position', '')], 
-                        key=lambda x: x['credit'], reverse=True),
-            'SG': sorted([p for p in available_players if 'SG' in p.get('position', '')], 
-                        key=lambda x: x['credit'], reverse=True),
-            'SF': sorted([p for p in available_players if 'SF' in p.get('position', '')], 
-                        key=lambda x: x['credit'], reverse=True),
-            'PF': sorted([p for p in available_players if 'PF' in p.get('position', '')], 
-                        key=lambda x: x['credit'], reverse=True),
-            'C': sorted([p for p in available_players if 'C' in p.get('position', '')], 
-                       key=lambda x: x['credit'], reverse=True)
-        }
-        
-        # Try to build a team with 180-200 total credits (strict limit: max 200)
-        max_attempts = 100
+        season = data_manager.current_season
+        all_players = data_manager.get_all_nba_players(season=season, min_games=0)
+        if not all_players or len(all_players) <= 5:
+            season = (getattr(data_manager, '_discovered_seasons', None) or ['2025-26', '2024-25'])[0]
+            all_players = data_manager.get_all_nba_players(season=season, min_games=0)
+
+        # Get full rankings to have accurate credits and stats
+        rankings = draft_assistant.get_draft_rankings(top_n=None, season=season)
+        if not rankings:
+            rankings = all_players
+
+        # Filter out user's players
+        user_players = set()
+        for p in session.get('my_team', []) + session.get('yahoo_my_team_roster', []):
+            name = p if isinstance(p, str) else (p.get('name') if isinstance(p, dict) else str(p))
+            if name:
+                user_players.add(name.strip().lower())
+
+        candidates = [
+            p for p in rankings 
+            if p.get('name', '').strip().lower() not in user_players and (p.get('credit') or 0) >= 1
+        ]
+
+        def pos_matches(player_pos, target_slot):
+            pos = (player_pos or '').upper()
+            if target_slot in ['PG', 'SG', 'SF', 'PF', 'C']:
+                return target_slot in pos
+            if target_slot == 'G':
+                return any(x in pos for x in ['PG', 'SG', 'G'])
+            if target_slot == 'F':
+                return any(x in pos for x in ['SF', 'PF', 'F'])
+            return True  # UTIL or BN
+
+        # Group into tiers for star prioritization
+        superstars = [p for p in candidates if (p.get('credit') or 0) >= 55]       # Jokic, Doncic, Wemby, SGA
+        elite_stars = [p for p in candidates if 45 <= (p.get('credit') or 0) < 55] # Edwards, Mitchell, Maxey, etc.
+        all_stars = [p for p in candidates if 35 <= (p.get('credit') or 0) < 45]   # Durant, Brown, Sengun, Curry, etc.
+        solid_players = [p for p in candidates if 15 <= (p.get('credit') or 0) < 35]
+        role_players = [p for p in candidates if 5 <= (p.get('credit') or 0) < 15]
+        bargains = [p for p in candidates if 1 <= (p.get('credit') or 0) < 5]
+
+        # 13 standard slots: 10 starters + 3 bench
+        slots = ['PG', 'SG', 'G', 'SF', 'PF', 'F', 'C', 'C', 'UTIL', 'UTIL', 'BN', 'BN', 'BN']
+
         best_team = None
         best_credit = 0
-        
-        app.logger.info(f"Starting random opponent generation. Available players: {len(available_players)}")
-        app.logger.info(f"Sample player credits: {[(p['name'], p['credit']) for p in available_players[:5]]}")
-        
-        for attempt in range(max_attempts):
-            random_team = []
-            used_names = set()
-            total_credit = 0
-            
-            # Define exact roster slots: PG, SG, G, SF, PF, F, C, C, UTIL, UTIL
-            roster_slots = [
-                ('PG', ['PG']),           # Pure PG
-                ('SG', ['SG']),           # Pure SG  
-                ('G', ['PG', 'SG']),      # Any guard (PG or SG)
-                ('SF', ['SF']),           # Pure SF
-                ('PF', ['PF']),           # Pure PF
-                ('F', ['SF', 'PF']),      # Any forward (SF or PF)
-                ('C', ['C']),             # Center
-                ('C', ['C']),             # Center
-                ('UTIL', ['PG', 'SG', 'SF', 'PF', 'C']),  # Any position
-                ('UTIL', ['PG', 'SG', 'SF', 'PF', 'C'])   # Any position
-            ]
-            target_avg_per_player = 190 / 10  # Target ~19 credits per player
-            
-            # Fill each roster slot in order
-            for slot_name, allowed_positions in roster_slots:
-                credits_left = 200 - total_credit
-                slots_remaining = 10 - len(random_team)
-                
-                # Don't use all credits on early picks
-                max_credit_for_slot = credits_left - (slots_remaining - 1) if slots_remaining > 1 else credits_left
-                
-                # Find candidates that match this slot's position requirements
-                candidates = []
-                for p in available_players:
-                    if p['name'] in used_names:
-                        continue
-                    if p['credit'] > max_credit_for_slot:
-                        continue
-                    
-                    # Check if player's position matches any allowed position for this slot
-                    player_pos = p.get('position', '')
-                    if any(allowed_pos in player_pos for allowed_pos in allowed_positions):
-                        candidates.append(p)
-                
-                if not candidates:
-                    # If no candidates, try with relaxed credit limit
-                    candidates = [p for p in available_players 
-                                if p['name'] not in used_names 
-                                and any(pos in p.get('position', '') for pos in allowed_positions)]
-                    if not candidates:
-                        break  # Can't fill this slot
-                
-                # Target credit for this slot
-                avg_needed = (190 - total_credit) / slots_remaining if slots_remaining > 0 else 10
-                avg_needed = max(1, min(avg_needed, max_credit_for_slot))
-                
-                # Sort by proximity to needed average
-                candidates_sorted = sorted(candidates, 
-                                         key=lambda x: abs(x['credit'] - avg_needed))
-                
-                # Pick from top candidates
-                pool_size = max(1, len(candidates_sorted) // 3)
-                selected = random.choice(candidates_sorted[:pool_size])
-                
-                random_team.append(selected)
-                used_names.add(selected['name'])
-                total_credit += selected['credit']
-            
-            # Check if this team is valid and good
-            if len(random_team) == 10 and total_credit <= 200:
-                app.logger.info(f"Attempt {attempt}: Generated team with {total_credit} credits")
-                if 180 <= total_credit <= 200:
-                    best_team = random_team
-                    best_credit = total_credit
-                    app.logger.info(f"Perfect team found with {total_credit} credits!")
-                    break  # Perfect team found
-                elif total_credit <= 200 and (best_team is None or abs(total_credit - 190) < abs(best_credit - 190)):
-                    best_team = random_team
-                    best_credit = total_credit
-            elif len(random_team) == 10:
-                app.logger.warning(f"Attempt {attempt}: Team exceeds limit! Credits: {total_credit}/200")
-        
-        # Use best team found or fallback
-        if not best_team or len(best_team) < 10:
-            app.logger.warning("Using fallback algorithm - main loop failed")
-            # Fallback: pick low-credit players to ensure we don't exceed 200
-            sorted_by_credit = sorted([p for p in available_players], key=lambda x: x['credit'])
-            random_team = []
-            total_credit = 0
-            for player in sorted_by_credit:
-                if len(random_team) < 10 and total_credit + player['credit'] <= 200:
-                    random_team.append(player)
-                    total_credit += player['credit']
-                if len(random_team) == 10:
+
+        for attempt in range(500):
+            # 1. Pick 1-2 Marquee Stars:
+            style = random.choice([1, 2, 3, 4])
+            selected_stars = []
+            if style == 1 and superstars:
+                mega = random.choice(superstars)
+                solid = random.choice([p for p in solid_players if 20 <= (p.get('credit') or 0) <= 32]) if solid_players else None
+                selected_stars = [mega] + ([solid] if solid else [])
+            elif style == 2 and elite_stars and all_stars:
+                selected_stars = [random.choice(elite_stars), random.choice(all_stars)]
+            elif style == 3 and len(all_stars) >= 2:
+                two_stars = random.sample(all_stars, 2)
+                solid = random.choice([p for p in solid_players if 18 <= (p.get('credit') or 0) <= 28]) if solid_players else None
+                selected_stars = two_stars + ([solid] if solid else [])
+            elif style == 4 and superstars and all_stars:
+                selected_stars = [random.choice(superstars), random.choice(all_stars)]
+            else:
+                top_pool = [p for p in candidates if (p.get('credit') or 0) >= 38]
+                if top_pool:
+                    selected_stars = [random.choice(top_pool)]
+
+            team = list(selected_stars)
+            used_names = set(p['name'] for p in team)
+            current_credit = sum(p.get('credit', 0) for p in team)
+
+            remaining_slots_count = 13 - len(team)
+            remaining_budget = 200 - current_credit
+
+            if remaining_budget < remaining_slots_count:
+                continue
+
+            # Determine unfilled slots
+            unfilled_slots = list(slots)
+            for p in team:
+                for s in unfilled_slots:
+                    if pos_matches(p.get('position', ''), s):
+                        unfilled_slots.remove(s)
+                        break
+
+            # Fill remaining slots
+            valid = True
+            for slot in list(unfilled_slots):
+                rem_slots = len(unfilled_slots)
+                max_c = remaining_budget - (rem_slots - 1)
+                target_c = remaining_budget / rem_slots
+
+                matching = [
+                    p for p in candidates
+                    if p['name'] not in used_names 
+                    and pos_matches(p.get('position', ''), slot) 
+                    and (p.get('credit') or 0) <= max_c
+                ]
+                if not matching:
+                    valid = False
                     break
-            app.logger.info(f"Fallback team created with {total_credit} credits")
-        else:
-            random_team = best_team
-            total_credit = best_credit
-            app.logger.info(f"Using best team with {total_credit} credits")
-        
-        # Final validation
-        final_total = sum(p['credit'] for p in random_team)
-        app.logger.info(f"Final team: {len(random_team)} players, Total credit: {final_total}")
-        app.logger.info(f"Team credits breakdown: {[(p['name'], p['credit']) for p in random_team]}")
-        
-        if final_total > 200:
-            app.logger.error(f"ERROR: Final team exceeds 200 credits! Total: {final_total}")
-        
-        random_team_names = [p['name'] for p in random_team]
+
+                matching.sort(key=lambda x: abs((x.get('credit') or 0) - target_c))
+                top_pool = matching[:max(3, len(matching) // 4)]
+                pick = random.choice(top_pool)
+
+                team.append(pick)
+                used_names.add(pick['name'])
+                unfilled_slots.remove(slot)
+                remaining_budget -= (pick.get('credit') or 0)
+
+            if not valid or len(team) != 13:
+                continue
+
+            tot = sum(p.get('credit', 0) for p in team)
+
+            # Optimization pass: Upgrade non-star players with leftover budget to maximize credit (up to 200)
+            if tot < 200 and tot >= 180:
+                diff = 200 - tot
+                for i in range(len(team) - 1, -1, -1):
+                    p = team[i]
+                    if p in selected_stars:
+                        continue
+                    desired_c = (p.get('credit') or 0) + diff
+                    upgrades = [
+                        cand for cand in candidates
+                        if cand['name'] not in used_names
+                        and pos_matches(cand.get('position', ''), slots[i])
+                        and (p.get('credit') or 0) < (cand.get('credit') or 0) <= desired_c
+                    ]
+                    if upgrades:
+                        upgrades.sort(key=lambda x: x.get('credit', 0), reverse=True)
+                        best_upgrade = upgrades[0]
+                        used_names.remove(p['name'])
+                        used_names.add(best_upgrade['name'])
+                        team[i] = best_upgrade
+                        tot = sum(x.get('credit', 0) for x in team)
+                        diff = 200 - tot
+                        if diff == 0:
+                            break
+
+            if 195 <= tot <= 200:
+                best_team = team
+                best_credit = tot
+                break
+
+            if tot <= 200 and tot > best_credit:
+                best_team = team
+                best_credit = tot
+
+        if not best_team or len(best_team) != 13:
+            # Fallback
+            sorted_by_credit = sorted(candidates, key=lambda x: x.get('credit', 0), reverse=True)
+            best_team = sorted_by_credit[:1]  # 1 star
+            used = set(p['name'] for p in best_team)
+            c_left = 200 - sum(p['credit'] for p in best_team)
+            for p in sorted(candidates, key=lambda x: x.get('credit', 0)):
+                if len(best_team) < 13 and p['name'] not in used and p['credit'] <= c_left - (13 - len(best_team) - 1):
+                    best_team.append(p)
+                    used.add(p['name'])
+                    c_left -= p['credit']
+                if len(best_team) == 13:
+                    break
+            best_credit = sum(p.get('credit', 0) for p in best_team)
+
+        # Assign slots in standard order
+        best_team = draft_assistant._assign_roster_slots(best_team, 13)
+        random_team_names = [p['name'] for p in best_team]
+
         session['opponent_team'] = random_team_names
-        
+        session['yahoo_opponent_team_roster'] = random_team_names
+        session['yahoo_opponent_team_name'] = 'Random Opponent'
+        session['yahoo_opponent_is_manual'] = True
+        session.pop('yahoo_opponent_team_stats', None)
+
+        app.logger.info(f"Generated 13-player random opponent with {best_credit}/200 credits: {random_team_names}")
+
         return jsonify({
-            'success': True, 
+            'success': True,
             'team': random_team_names,
-            'players': random_team,
-            'total_credit': final_total  # Use recalculated total
+            'players': best_team,
+            'total_credit': best_credit
         })
     except Exception as e:
+        app.logger.error(f"Error generating random opponent: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -991,7 +1477,7 @@ def demo_mode():
     """Demo mode - Test features without Yahoo Fantasy League"""
     try:
         # Get all players for demo mode
-        all_players = data_manager.get_all_nba_players(season='2024-25', min_games=20)
+        all_players = data_manager.get_all_nba_players(season=data_manager.current_season, min_games=0)
         
         return render_template('demo.html', 
                              all_players=all_players,
@@ -1006,7 +1492,7 @@ def demo_matchup():
     """Demo mode matchup simulator"""
     try:
         # Get all players for roster building
-        all_players = data_manager.get_all_nba_players(season='2024-25', min_games=20)
+        all_players = data_manager.get_all_nba_players(season=data_manager.current_season, min_games=0)
         
         # Get user's team from session
         my_team = session.get('my_team', [])
@@ -1055,7 +1541,7 @@ def demo_recommendations():
     """Demo mode recommendations"""
     try:
         # Get all players for recommendations
-        all_players = data_manager.get_all_nba_players(season='2024-25', min_games=20)
+        all_players = data_manager.get_all_nba_players(season=data_manager.current_season, min_games=0)
         
         # Get user's team from session
         my_team = session.get('my_team', [])
@@ -1074,6 +1560,12 @@ def demo_recommendations():
         
         # Get user's roster
         current_roster = [p for p in all_players if p['name'] in my_team]
+        team_credits_map = {item['name']: item['credit'] for item in session.get('team_credits', []) if isinstance(item, dict) and 'name' in item}
+        for p in current_roster:
+            if p['name'] in team_credits_map:
+                p['credit'] = team_credits_map[p['name']]
+            elif 'credit' not in p and draft_assistant:
+                p['credit'] = draft_assistant.calculate_player_credit(p.get('stats', {}), p.get('minutes', 0))
         
         # Get available free agents (players not on user's team)
         free_agents = [p for p in all_players if p['name'] not in my_team]
@@ -1225,8 +1717,27 @@ if __name__ == '__main__':
         app.logger.warning("⚠️ SSL certificates not found! Using self-signed (adhoc) - Browser will show warnings")
         app.logger.warning("💡 Run 'mkcert localhost 127.0.0.1' in project root to generate trusted certificates")
     
+    # Host, port and URL configuration
+    host = os.getenv('FLASK_HOST', '127.0.0.1')
+    port = int(os.getenv('FLASK_PORT', 5000))
+    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    protocol = 'https' if ssl_context else 'http'
+    site_url = f"{protocol}://{host}:{port}"
+    alt_url = f"{protocol}://localhost:{port}" if host == '127.0.0.1' else None
+
+    # Print website link prominently in terminal when server starts
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not debug_mode:
+        print("\n" + "=" * 60, flush=True)
+        print("  🏀 NBA Fantasy Assistant Başlatıldı!", flush=True)
+        print(f"  🔗 Web Sitesi: {site_url}", flush=True)
+        if alt_url:
+            print(f"  🔗 Alternatif: {alt_url}", flush=True)
+        print("=" * 60 + "\n", flush=True)
+
     # Run with SSL for Yahoo OAuth
     app.run(
-        debug=os.getenv('FLASK_DEBUG', 'False').lower() == 'true',
+        host=host,
+        port=port,
+        debug=debug_mode,
         ssl_context=ssl_context
-    )
+    )

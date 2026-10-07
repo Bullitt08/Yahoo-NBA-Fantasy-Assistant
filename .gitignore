@@ -1,12 +1,11 @@
-# Python
+# ==============================================================================
+# Python & Bytecode
+# ==============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -22,53 +21,124 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Flask
+# ==============================================================================
+# Virtual Environments
+# ==============================================================================
+venv/
+.venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================================================================
+# Flask & Webassets
+# ==============================================================================
 instance/
 .webassets-cache
 
-# Environment variables
+# ==============================================================================
+# Secrets, Environment Variables & Credentials
+# ==============================================================================
 .env
-.env.local
+.env.*
+!.env.example
+*.env
+*.secret
+*.key
+*.pem
+*.crt
+*.cer
+*.pfx
+*.p12
+ssl/*.pem
+ssl/*.key
+token.json
+tokens.json
+yahoo_tokens.json
+credentials.json
+client_secret*.json
 
-# Database
+# ==============================================================================
+# Databases & Backups
+# ==============================================================================
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 database/*.db
 yahoo_fantasy.db
+!database/.gitkeep
 
-# IDE
+# ==============================================================================
+# CSV Data Scrapes & Dumps (Large files)
+# ==============================================================================
+data/*.csv
+!data/.gitkeep
+
+# ==============================================================================
+# Caches & Temporary Files
+# ==============================================================================
+cache/
+*.cache
+temp/*
+!temp/.gitkeep
+tmp/
+scratch/
+
+# ==============================================================================
+# Testing & Coverage
+# ==============================================================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+nosetests.xml
+
+# ==============================================================================
+# IDEs & Editors
+# ==============================================================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.sublime-workspace
+*.sublime-project
+*.code-workspace
 
-# OS
+# ==============================================================================
+# Operating System Files
+# ==============================================================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# SSL Certificates (keep mkcert.exe for regeneration)
-ssl/*.pem
-ssl/*.key
-
-# Cache
-cache/
-*.cache
-
+# ==============================================================================
 # Logs
+# ==============================================================================
 *.log
 logs/
 
-# CSV data files
-data/*.csv
-
-# Temporary/Development files
+# ==============================================================================
+# Temporary / Scratch scripts & old files
+# ==============================================================================
 *_old*.py
 *_backup*.py
 check_*.py
 test_*.py
+!tests/test_*.py
 convert_*.py
 download_*.py
 download_*.ps1
@@ -79,7 +149,7 @@ import_*.py
 reimport_*.py
 translate_*.py
 
-# Documentation files (keep main README)
+# Documentation updates / temporary summaries
 *_UPDATE.md
 *_FIX.md
 *_GUIDE.md

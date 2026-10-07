@@ -157,15 +157,32 @@ async function loadYahooLeaguesPreview() {
 </script>
 {% endif %}
 
-<div class="row">
-    <div class="col-12">
-        <h1><i class="fas fa-tachometer-alt"></i> NBA Stats Dashboard 
+<div class="row align-items-center mb-2">
+    <div class="col-md-7">
+        <h1 class="mb-1"><i class="fas fa-tachometer-alt"></i> NBA Stats Dashboard 
             <span class="badge bg-info" style="font-size: 0.5em;">{{ stats.current_season }} Season</span>
+            <span class="badge {% if mode == 'total' %}bg-primary{% else %}bg-secondary{% endif %}" style="font-size: 0.5em;">
+                {{ 'Season Totals' if mode == 'total' else 'Per Game Averages' }}
+            </span>
         </h1>
-        <p class="text-muted">Real-time statistics from Basketball Reference ({{stats.current_season}} season)</p>
-        <hr>
+        <p class="text-muted mb-0">Real-time statistics from Basketball Reference ({{stats.current_season}} season)</p>
+    </div>
+    <div class="col-md-5 text-md-end mt-2 mt-md-0">
+        <div class="btn-group" role="group" aria-label="Dashboard Stats Mode">
+            <button type="button" 
+                    class="btn btn-sm {% if mode != 'total' %}btn-primary active{% else %}btn-outline-primary{% endif %}" 
+                    onclick="switchGlobalStatsMode('per_game')">
+                <i class="fas fa-chart-line"></i> Per Game
+            </button>
+            <button type="button" 
+                    class="btn btn-sm {% if mode == 'total' %}btn-primary active{% else %}btn-outline-primary{% endif %}" 
+                    onclick="switchGlobalStatsMode('total')">
+                <i class="fas fa-calculator"></i> Total
+            </button>
+        </div>
     </div>
 </div>
+<hr>
 
 <!-- NBA Stats Overview -->
 <div class="row mb-4">
@@ -192,7 +209,11 @@ async function loadYahooLeaguesPreview() {
                     <div>
                         <h5 class="card-title">Top Scorer</h5>
                         <h6>{{stats.top_scorers[0].name if stats.top_scorers else 'N/A'}}</h6>
+                        {% if mode == 'total' %}
+                        <small>{{ (stats.top_scorers[0].total_stats.points if stats.top_scorers[0].total_stats else (stats.top_scorers[0].stats.points * stats.top_scorers[0].games_played))|round|int }} PTS (Total)</small>
+                        {% else %}
                         <small>{{stats.top_scorers[0].stats.points|round(1) if stats.top_scorers else 0}} PPG</small>
+                        {% endif %}
                     </div>
                     <div class="align-self-center">
                         <i class="fas fa-basketball-ball fa-2x"></i>
@@ -208,7 +229,11 @@ async function loadYahooLeaguesPreview() {
                     <div>
                         <h5 class="card-title">Top Rebounder</h5>
                         <h6>{{stats.top_rebounders[0].name if stats.top_rebounders else 'N/A'}}</h6>
+                        {% if mode == 'total' %}
+                        <small>{{ (stats.top_rebounders[0].total_stats.rebounds if stats.top_rebounders[0].total_stats else (stats.top_rebounders[0].stats.rebounds * stats.top_rebounders[0].games_played))|round|int }} REB (Total)</small>
+                        {% else %}
                         <small>{{stats.top_rebounders[0].stats.rebounds|round(1) if stats.top_rebounders else 0}} RPG</small>
+                        {% endif %}
                     </div>
                     <div class="align-self-center">
                         <i class="fas fa-chart-bar fa-2x"></i>
@@ -224,7 +249,11 @@ async function loadYahooLeaguesPreview() {
                     <div>
                         <h5 class="card-title">Top Assists</h5>
                         <h6>{{stats.top_assisters[0].name if stats.top_assisters else 'N/A'}}</h6>
+                        {% if mode == 'total' %}
+                        <small>{{ (stats.top_assisters[0].total_stats.assists if stats.top_assisters[0].total_stats else (stats.top_assisters[0].stats.assists * stats.top_assisters[0].games_played))|round|int }} AST (Total)</small>
+                        {% else %}
                         <small>{{stats.top_assisters[0].stats.assists|round(1) if stats.top_assisters else 0}} APG</small>
+                        {% endif %}
                     </div>
                     <div class="align-self-center">
                         <i class="fas fa-hands-helping fa-2x"></i>
@@ -298,30 +327,40 @@ async function loadYahooLeaguesPreview() {
                                 <th>Player</th>
                                 <th>Pos</th>
                                 <th>Team</th>
-                                <th class="text-center">PTS</th>
-                                <th class="text-center">REB</th>
-                                <th class="text-center">AST</th>
-                                <th class="text-center">STL</th>
-                                <th class="text-center">BLK</th>
-                                <th class="text-center">3PM</th>
+                                <th class="text-center">PTS<small class="text-muted d-block" style="font-size:0.65rem;">{{ 'Total' if mode == 'total' else 'PPG' }}</small></th>
+                                <th class="text-center">REB<small class="text-muted d-block" style="font-size:0.65rem;">{{ 'Total' if mode == 'total' else 'RPG' }}</small></th>
+                                <th class="text-center">AST<small class="text-muted d-block" style="font-size:0.65rem;">{{ 'Total' if mode == 'total' else 'APG' }}</small></th>
+                                <th class="text-center">STL<small class="text-muted d-block" style="font-size:0.65rem;">{{ 'Total' if mode == 'total' else 'SPG' }}</small></th>
+                                <th class="text-center">BLK<small class="text-muted d-block" style="font-size:0.65rem;">{{ 'Total' if mode == 'total' else 'BPG' }}</small></th>
+                                <th class="text-center">3PM<small class="text-muted d-block" style="font-size:0.65rem;">{{ 'Total' if mode == 'total' else '3PG' }}</small></th>
                                 <th class="text-center">FG%</th>
                                 <th class="text-center">FT%</th>
-                                <th class="text-center">TO</th>
+                                <th class="text-center">TO<small class="text-muted d-block" style="font-size:0.65rem;">{{ 'Total' if mode == 'total' else 'TOPG' }}</small></th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for player in my_roster %}
+                            {% set p_gp = player.games_played|default(1) %}
                             <tr>
                                 <td><strong>{{ loop.index }}</strong></td>
                                 <td><strong>{{ player.name }}</strong></td>
                                 <td><span class="badge bg-info">{{ player.position }}</span></td>
                                 <td>{{ player.team }}</td>
+                                {% if mode == 'total' %}
+                                <td class="text-center">{{ (player.total_stats.points if player.total_stats and player.total_stats.points else (player.stats.points * p_gp))|round|int }}</td>
+                                <td class="text-center">{{ (player.total_stats.rebounds if player.total_stats and player.total_stats.rebounds else (player.stats.rebounds * p_gp))|round|int }}</td>
+                                <td class="text-center">{{ (player.total_stats.assists if player.total_stats and player.total_stats.assists else (player.stats.assists * p_gp))|round|int }}</td>
+                                <td class="text-center">{{ (player.total_stats.steals if player.total_stats and player.total_stats.steals else (player.stats.steals * p_gp))|round|int }}</td>
+                                <td class="text-center">{{ (player.total_stats.blocks if player.total_stats and player.total_stats.blocks else (player.stats.blocks * p_gp))|round|int }}</td>
+                                <td class="text-center">{{ (player.total_stats.fg3m if (player.total_stats and player.total_stats.fg3m) else (player.stats.three_pointers_made|default(0) * p_gp))|round|int }}</td>
+                                {% else %}
                                 <td class="text-center">{{ player.stats.points|default(0)|round(1) }}</td>
                                 <td class="text-center">{{ player.stats.rebounds|default(0)|round(1) }}</td>
                                 <td class="text-center">{{ player.stats.assists|default(0)|round(1) }}</td>
                                 <td class="text-center">{{ player.stats.steals|default(0)|round(2) }}</td>
                                 <td class="text-center">{{ player.stats.blocks|default(0)|round(2) }}</td>
                                 <td class="text-center">{{ player.stats.three_pointers_made|default(0)|round(1) }}</td>
+                                {% endif %}
                                 {% set fg_made = player.stats.get('field_goals', 0) %}
                                 {% set fg_att = player.stats.get('field_goal_attempts', 0) %}
                                 {% set player_fg_pct = (fg_made / fg_att * 100) if fg_att > 0 else 0 %}
@@ -330,7 +369,11 @@ async function loadYahooLeaguesPreview() {
                                 {% set ft_att = player.stats.get('free_throw_attempts', 0) %}
                                 {% set player_ft_pct = (ft_made / ft_att * 100) if ft_att > 0 else 0 %}
                                 <td class="text-center">{{ player_ft_pct|round(1) if player_ft_pct > 0 else '-' }}%</td>
+                                {% if mode == 'total' %}
+                                <td class="text-center">{{ (player.total_stats.turnovers if player.total_stats and player.total_stats.turnovers else (player.stats.turnovers * p_gp))|round|int }}</td>
+                                {% else %}
                                 <td class="text-center">{{ player.stats.turnovers|default(0)|round(1) }}</td>
+                                {% endif %}
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -340,8 +383,10 @@ async function loadYahooLeaguesPreview() {
                                     <strong>
                                         {% if yahoo_my_team_stats %}
                                         <i class="fab fa-yahoo text-warning"></i> Yahoo Actual Stats (Week {{ yahoo_current_week or '?' }})
+                                        {% elif mode == 'total' %}
+                                        Team Totals (Cumulative Season Volume)
                                         {% else %}
-                                        Team Totals (Weekly Projection)
+                                        Team Totals (Per-Game Production)
                                         {% endif %}
                                     </strong>
                                 </td>
@@ -356,8 +401,50 @@ async function loadYahooLeaguesPreview() {
                                 <td class="text-center"><strong>{{ (yahoo_my_team_stats.get('5', '0')|float * 100)|round(1) if yahoo_my_team_stats.get('5') else '0' }}%</strong></td>
                                 <td class="text-center"><strong>{{ (yahoo_my_team_stats.get('8', '0')|float * 100)|round(1) if yahoo_my_team_stats.get('8') else '0' }}%</strong></td>
                                 <td class="text-center"><strong>{{ yahoo_my_team_stats.get('19', '0') }}</strong></td>
+                                {% elif mode == 'total' %}
+                                <!-- Projected season totals -->
+                                {% set team_pts = namespace(val=0) %}
+                                {% set team_reb = namespace(val=0) %}
+                                {% set team_ast = namespace(val=0) %}
+                                {% set team_stl = namespace(val=0) %}
+                                {% set team_blk = namespace(val=0) %}
+                                {% set team_3pm = namespace(val=0) %}
+                                {% set team_tov = namespace(val=0) %}
+                                {% for p in my_roster %}
+                                    {% set p_gp = p.games_played|default(70) %}
+                                    {% set team_pts.val = team_pts.val + (p.total_stats.points if p.total_stats and p.total_stats.points else (p.stats.points * p_gp)) %}
+                                    {% set team_reb.val = team_reb.val + (p.total_stats.rebounds if p.total_stats and p.total_stats.rebounds else (p.stats.rebounds * p_gp)) %}
+                                    {% set team_ast.val = team_ast.val + (p.total_stats.assists if p.total_stats and p.total_stats.assists else (p.stats.assists * p_gp)) %}
+                                    {% set team_stl.val = team_stl.val + (p.total_stats.steals if p.total_stats and p.total_stats.steals else (p.stats.steals * p_gp)) %}
+                                    {% set team_blk.val = team_blk.val + (p.total_stats.blocks if p.total_stats and p.total_stats.blocks else (p.stats.blocks * p_gp)) %}
+                                    {% set team_3pm.val = team_3pm.val + (p.total_stats.fg3m if (p.total_stats and p.total_stats.fg3m) else (p.stats.three_pointers_made|default(0) * p_gp)) %}
+                                    {% set team_tov.val = team_tov.val + (p.total_stats.turnovers if p.total_stats and p.total_stats.turnovers else (p.stats.turnovers * p_gp)) %}
+                                {% endfor %}
+                                <td class="text-center"><strong>{{ team_pts.val|round|int }}</strong></td>
+                                <td class="text-center"><strong>{{ team_reb.val|round|int }}</strong></td>
+                                <td class="text-center"><strong>{{ team_ast.val|round|int }}</strong></td>
+                                <td class="text-center"><strong>{{ team_stl.val|round|int }}</strong></td>
+                                <td class="text-center"><strong>{{ team_blk.val|round|int }}</strong></td>
+                                <td class="text-center"><strong>{{ team_3pm.val|round|int }}</strong></td>
+                                {% set total_fg_made = namespace(value=0) %}
+                                {% set total_fg_att = namespace(value=0) %}
+                                {% for p in my_roster %}
+                                    {% set total_fg_made.value = total_fg_made.value + p.stats.get('field_goals', 0) %}
+                                    {% set total_fg_att.value = total_fg_att.value + p.stats.get('field_goal_attempts', 0) %}
+                                {% endfor %}
+                                {% set team_fg_pct = (total_fg_made.value / total_fg_att.value * 100) if total_fg_att.value > 0 else 0 %}
+                                <td class="text-center"><strong>{{ team_fg_pct|round(1) }}%</strong></td>
+                                {% set total_ft_made = namespace(value=0) %}
+                                {% set total_ft_att = namespace(value=0) %}
+                                {% for p in my_roster %}
+                                    {% set total_ft_made.value = total_ft_made.value + p.stats.get('free_throws', 0) %}
+                                    {% set total_ft_att.value = total_ft_att.value + p.stats.get('free_throw_attempts', 0) %}
+                                {% endfor %}
+                                {% set team_ft_pct = (total_ft_made.value / total_ft_att.value * 100) if total_ft_att.value > 0 else 0 %}
+                                <td class="text-center"><strong>{{ team_ft_pct|round(1) }}%</strong></td>
+                                <td class="text-center"><strong>{{ team_tov.val|round|int }}</strong></td>
                                 {% else %}
-                                <!-- Projected stats -->
+                                <!-- Projected per-game stats -->
                                 <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.points')|round(1) }}</strong></td>
                                 <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.rebounds')|round(1) }}</strong></td>
                                 <td class="text-center"><strong>{{ my_roster|sum(attribute='stats.assists')|round(1) }}</strong></td>
@@ -446,64 +533,95 @@ async function loadYahooLeaguesPreview() {
 </div>
 
 <!-- Top Players Preview -->
-<div class="row mt-4">
-    <div class="col-md-4">
-        <div class="card">
+<div class="row mt-4 align-items-center mb-3">
+    <div class="col-md-6">
+        <h5 class="mb-0"><i class="fas fa-chart-line text-primary"></i> NBA League Leaders ({{ season }})</h5>
+    </div>
+    <div class="col-md-6 text-md-end mt-2 mt-md-0">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Stats Mode">
+            <a href="?season={{ season }}&mode=per_game" class="btn btn-outline-primary {% if mode != 'total' %}active{% endif %}">
+                <i class="fas fa-chart-line"></i> Per Game
+            </a>
+            <a href="?season={{ season }}&mode=total" class="btn btn-outline-primary {% if mode == 'total' %}active{% endif %}">
+                <i class="fas fa-calculator"></i> Total
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
             <div class="card-header bg-success text-white">
                 <h6 class="mb-0"><i class="fas fa-trophy"></i> Top Scorers</h6>
             </div>
             <div class="list-group list-group-flush">
                 {% for player in stats.top_scorers[:5] %}
-                <div class="list-group-item d-flex justify-content-between">
+                <div class="list-group-item d-flex justify-content-between align-items-center">
                     <div>
                         <strong>{{loop.index}}. {{player.name}}</strong>
-                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}} (GP: {{player.games_played}})</small>
                     </div>
                     <div class="text-end">
+                        {% if mode == 'total' %}
+                        <strong class="text-success">{{ player.total_stats.points|default(player.stats.points * player.games_played)|round|int }}</strong>
+                        <br><small class="text-muted">PTS</small>
+                        {% else %}
                         <strong class="text-success">{{player.stats.points|default(0)|round(1)}}</strong>
                         <br><small class="text-muted">PPG</small>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card">
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
             <div class="card-header bg-info text-white">
                 <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Top Rebounders</h6>
             </div>
             <div class="list-group list-group-flush">
                 {% for player in stats.top_rebounders[:5] %}
-                <div class="list-group-item d-flex justify-content-between">
+                <div class="list-group-item d-flex justify-content-between align-items-center">
                     <div>
                         <strong>{{loop.index}}. {{player.name}}</strong>
-                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}} (GP: {{player.games_played}})</small>
                     </div>
                     <div class="text-end">
+                        {% if mode == 'total' %}
+                        <strong class="text-info">{{ player.total_stats.rebounds|default(player.stats.rebounds * player.games_played)|round|int }}</strong>
+                        <br><small class="text-muted">REB</small>
+                        {% else %}
                         <strong class="text-info">{{player.stats.rebounds|default(0)|round(1)}}</strong>
                         <br><small class="text-muted">RPG</small>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card">
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
             <div class="card-header bg-warning text-dark">
                 <h6 class="mb-0"><i class="fas fa-hands-helping"></i> Top Assist Leaders</h6>
             </div>
             <div class="list-group list-group-flush">
                 {% for player in stats.top_assisters[:5] %}
-                <div class="list-group-item d-flex justify-content-between">
+                <div class="list-group-item d-flex justify-content-between align-items-center">
                     <div>
                         <strong>{{loop.index}}. {{player.name}}</strong>
-                        <br><small class="text-muted">{{player.team}} - {{player.position}}</small>
+                        <br><small class="text-muted">{{player.team}} - {{player.position}} (GP: {{player.games_played}})</small>
                     </div>
                     <div class="text-end">
+                        {% if mode == 'total' %}
+                        <strong class="text-warning">{{ player.total_stats.assists|default(player.stats.assists * player.games_played)|round|int }}</strong>
+                        <br><small class="text-muted">AST</small>
+                        {% else %}
                         <strong class="text-warning">{{player.stats.assists|default(0)|round(1)}}</strong>
                         <br><small class="text-muted">APG</small>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}

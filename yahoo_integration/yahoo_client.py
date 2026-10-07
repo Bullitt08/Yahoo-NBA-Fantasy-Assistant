@@ -230,7 +230,10 @@ class YahooFantasyClient:
                         # Recreate session with new token
                         self.oauth = OAuth2Session(self.client_id, token=self.token)
                         response = self.oauth.get(url)
-                        print("[DEBUG] ✅ Token refreshed successfully, retry succeeded")
+                        if response.ok:
+                            print("[DEBUG] ✅ Token refreshed successfully and request succeeded")
+                        else:
+                            print(f"[DEBUG] ⚠️ Token refreshed, but request still returned {response.status_code}: {response.text}")
                     except Exception as refresh_error:
                         print(f"[ERROR] Token refresh failed: {refresh_error}")
                         raise Exception(f"token_refresh_failed: {str(refresh_error)}")
@@ -248,6 +251,8 @@ class YahooFantasyClient:
             # Clear cache on error
             if cache_key in self.cache:
                 del self.cache[cache_key]
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"[ERROR] Yahoo API Error Response ({e.response.status_code}): {e.response.text}")
             if 'token_expired' in str(e).lower() or 'unauthorized' in str(e).lower() or '401' in str(e):
                 raise Exception("token_expired")
             raise
