@@ -2,6 +2,85 @@
 
 {% block title %}Draft Assistant - Yahoo NBA Fantasy Assistant{% endblock %}
 
+{% block container_class %}container-fluid px-2 px-md-3 px-xl-4{% endblock %}
+
+{% block extra_head %}
+<style>
+    .table-draft {
+        table-layout: auto;
+        font-size: 0.88rem;
+    }
+    .table-draft th, .table-draft td {
+        padding: 0.38rem 0.3rem !important;
+        vertical-align: middle !important;
+    }
+    .table-draft .cat-th {
+        width: 48px;
+        min-width: 44px;
+        cursor: pointer;
+        user-select: none;
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+        transition: background-color 0.15s ease-in-out;
+    }
+    .table-draft .cat-th:hover {
+        background-color: #343a40 !important;
+    }
+    .table-draft .cat-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        line-height: 1.1;
+        display: block;
+        text-align: center;
+        letter-spacing: 0.2px;
+    }
+    .table-draft .sort-icon-box {
+        font-size: 0.68rem;
+        line-height: 1;
+        margin-top: 2px;
+        height: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .table-draft .cat-cell {
+        font-size: 0.85rem;
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+        text-align: center;
+    }
+    .table-draft .trend-th, .table-draft .trend-cell {
+        width: 55px;
+        min-width: 50px;
+        text-align: center;
+    }
+    .table-draft .actions-th, .table-draft .actions-cell {
+        width: 135px;
+        min-width: 130px;
+        text-align: center;
+    }
+    .player-row:hover td {
+        background-color: rgba(13, 110, 253, 0.05);
+    }
+    .text-primary-hover:hover {
+        color: #0d6efd !important;
+        text-decoration: underline;
+    }
+    .table-responsive {
+        overflow-x: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #6c757d #f8f9fa;
+    }
+    .table-responsive::-webkit-scrollbar {
+        height: 6px;
+    }
+    .table-responsive::-webkit-scrollbar-thumb {
+        background-color: #6c757d;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- Yahoo Integration Banner -->
@@ -38,18 +117,32 @@
     </div>
 </div>
 
-<div class="row mb-4">
-    <div class="col-md-8">
+<div class="row g-3 mb-4">
+    <div class="col-lg-8 col-xl-9">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5><i class="fas fa-trophy"></i> Player Rankings</h5>
-                <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-primary active" onclick="filterPosition('all')">All</button>
-                    <button class="btn btn-outline-primary" onclick="filterPosition('PG')">PG</button>
-                    <button class="btn btn-outline-primary" onclick="filterPosition('SG')">SG</button>
-                    <button class="btn btn-outline-primary" onclick="filterPosition('SF')">SF</button>
-                    <button class="btn btn-outline-primary" onclick="filterPosition('PF')">PF</button>
-                    <button class="btn btn-outline-primary" onclick="filterPosition('C')">C</button>
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h5 class="mb-0"><i class="fas fa-trophy"></i> Player Rankings</h5>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <!-- Per Game vs Total Toggle -->
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Stats Mode Toggle">
+                        <button type="button" class="btn btn-outline-primary {% if mode != 'total' %}active{% endif %}" onclick="switchDraftMode('per_game')">
+                            <i class="fas fa-chart-line"></i> Per Game
+                        </button>
+                        <button type="button" class="btn btn-outline-primary {% if mode == 'total' %}active{% endif %}" onclick="switchDraftMode('total')">
+                            <i class="fas fa-calculator"></i> Total
+                        </button>
+                    </div>
+                    <!-- Position Filters -->
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary active" onclick="filterPosition('all')">All</button>
+                        <button class="btn btn-outline-secondary" onclick="filterPosition('PG')">PG</button>
+                        <button class="btn btn-outline-secondary" onclick="filterPosition('SG')">SG</button>
+                        <button class="btn btn-outline-secondary" onclick="filterPosition('G')">G</button>
+                        <button class="btn btn-outline-secondary" onclick="filterPosition('SF')">SF</button>
+                        <button class="btn btn-outline-secondary" onclick="filterPosition('PF')">PF</button>
+                        <button class="btn btn-outline-secondary" onclick="filterPosition('F')">F</button>
+                        <button class="btn btn-outline-secondary" onclick="filterPosition('C')">C</button>
+                    </div>
                 </div>
             </div>
             <div class="card-body">
@@ -70,62 +163,130 @@
                 </div>
                 
                 <!-- Results Counter -->
-                <div class="mb-2">
+                <div class="mb-2 d-flex justify-content-between align-items-center">
                     <span class="badge bg-secondary" id="visiblePlayersCount">{{total_players}} players</span>
+                    <small class="text-muted">
+                        Mode: <strong class="text-primary">{{ 'Season Totals' if mode == 'total' else 'Per-Game Averages' }}</strong>
+                        {% if sort_cat %}| Sorted by: <strong class="text-success">{{ sort_cat }} ({{ sort_dir|upper }})</strong>{% endif %}
+                    </small>
                 </div>
                 {% if rankings %}
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover">
+                    <table class="table table-sm table-hover align-middle table-draft mb-0">
                         <thead class="table-dark sticky-top">
-                            <tr>
-                                <th>Rank</th>
-                                <th>Player</th>
-                                <th>Pos</th>
-                                <th>Team</th>
-                                <th><span class="badge bg-warning text-dark"><i class="fas fa-coins"></i> Credit</span></th>
-                                <th>PTS</th>
-                                <th>REB</th>
-                                <th>AST</th>
-                                <th>ST</th>
-                                <th>BLK</th>
-                                <th>3PTM</th>
-                                <th>FG%</th>
-                                <th>FT%</th>
-                                <th>TO</th>
-                                <th>Trend</th>
-                                <th></th>
+                            <tr class="align-middle">
+                                <th class="text-center" style="width: 46px; min-width: 42px;">Rank</th>
+                                <th style="min-width: 140px;">Player</th>
+                                <th class="text-center" style="width: 50px; min-width: 46px;">Pos</th>
+                                <th class="text-center" style="width: 52px; min-width: 48px;">Team</th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('CREDIT')" title="Sort by Credit / Auction Value" style="min-width: 82px;">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="badge bg-warning text-dark"><i class="fas fa-coins"></i> Credit</span>
+                                        <span class="sort-icon-box">{% if sort_cat == 'CREDIT' %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('PTS')" title="Sort by PTS">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">PTS</span>
+                                        <span class="sort-icon-box">{% if sort_cat == 'PTS' %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('REB')" title="Sort by REB">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">REB</span>
+                                        <span class="sort-icon-box">{% if sort_cat == 'REB' %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('AST')" title="Sort by AST">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">AST</span>
+                                        <span class="sort-icon-box">{% if sort_cat == 'AST' %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('STL')" title="Sort by STL">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">ST</span>
+                                        <span class="sort-icon-box">{% if sort_cat == 'STL' %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('BLK')" title="Sort by BLK">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">BLK</span>
+                                        <span class="sort-icon-box">{% if sort_cat == 'BLK' %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('3PM')" title="Sort by 3PM">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">3PTM</span>
+                                        <span class="sort-icon-box">{% if sort_cat in ['3PM', '3PTM'] %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('FG%')" title="Sort by FG%">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">FG%</span>
+                                        <span class="sort-icon-box">{% if sort_cat == 'FG%' %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('FT%')" title="Sort by FT%">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">FT%</span>
+                                        <span class="sort-icon-box">{% if sort_cat == 'FT%' %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center sortable-col cat-th" onclick="sortByCategory('TOV')" title="Sort by TOV">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">TO</span>
+                                        <span class="sort-icon-box">{% if sort_cat in ['TOV', 'TO'] %}<i class="fas fa-sort-{{ 'up' if sort_dir == 'asc' else 'down' }} text-warning"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}</span>
+                                    </div>
+                                </th>
+                                <th class="text-center trend-th" title="Performance Trend">
+                                    <div class="d-flex flex-column align-items-center justify-content-center">
+                                        <span class="cat-label">Trend</span>
+                                        <span class="sort-icon-box" style="visibility: hidden;"><i class="fas fa-sort"></i></span>
+                                    </div>
+                                </th>
+                                <th class="text-center actions-th">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody class="align-middle">
                             {% for player in rankings %}
+                            {% set st = player.displayed_stats if player.displayed_stats else player.weighted_stats %}
                             <tr class="player-row" 
                                 data-position="{{ player.position }}"
                                 data-player-id="{{ player.player_id }}"
                                 data-player-name="{{ player.name }}"
-                                data-player-credit="{{ player.credit|default(0) }}"
-                                style="cursor: pointer;">
-                                <td><span class="badge bg-secondary">{{ player.draft_rank }}</span></td>
-                                <td>
-                                    <strong>{{ player.name }}</strong>
-                                    <br><small class="text-muted">Age: {{ player.age }}</small>
+                                data-player-team="{{ player.team }}"
+                                data-player-credit="{{ player.credit|default(1) }}"
+                                style="cursor: pointer;"
+                                title="Click to add {{ player.name }} to your team">
+                                <td class="text-center"><span class="badge bg-secondary">{{ player.draft_rank }}</span></td>
+                                <td class="player-name-cell" title="Click to add {{ player.name }} to your team">
+                                    <strong class="text-primary-hover"><i class="fas fa-plus-circle text-success me-1 opacity-75"></i>{{ player.name }}</strong>
+                                    <br><small class="text-muted" style="font-size: 0.72rem;">Age: {{ player.age }} | GP: {{ player.games_played }}</small>
                                 </td>
-                                <td>{{ player.position }}</td>
-                                <td>{{ player.team }}</td>
-                                <td>
-                                    <span class="badge {% if player.credit|default(0) >= 40 %}bg-danger{% elif player.credit|default(0) >= 25 %}bg-warning text-dark{% else %}bg-success{% endif %}">
-                                        {{ player.credit|default(0) }}
+                                <td class="text-center"><span class="badge bg-light text-dark border">{{ player.position }}</span></td>
+                                <td class="text-center">{{ player.team }}</td>
+                                <td class="text-center">
+                                    <span class="badge {% if player.credit|default(0) >= 40 %}bg-danger{% elif player.credit|default(0) >= 25 %}bg-warning text-dark{% else %}bg-success{% endif %}" title="Active Credit Value: ${{ player.credit|default(0) }}">
+                                        ${{ player.credit|default(0) }}
                                     </span>
+                                    {% if player.actual_auction_price is not none %}
+                                        <span class="badge bg-primary d-block mt-1" style="font-size: 0.65rem;" title="Actual League Auction Price">League: ${{ player.actual_auction_price }}</span>
+                                    {% endif %}
+                                    <small class="d-block text-muted" style="font-size: 0.65rem;" title="Fair Value: ${{ player.projected_fair_value|default(0) }} | Adj: ${{ player.adjusted_auction_value|default(0) }}">
+                                        Fair: ${{ player.projected_fair_value|default(0) }}
+                                    </small>
                                 </td>
-                                <td>{{ player.weighted_stats.points|default(0)|round(1) }}</td>
-                                <td>{{ player.weighted_stats.rebounds|default(0)|round(1) }}</td>
-                                <td>{{ player.weighted_stats.assists|default(0)|round(1) }}</td>
-                                <td>{{ player.weighted_stats.steals|default(0)|round(1) }}</td>
-                                <td>{{ player.weighted_stats.blocks|default(0)|round(1) }}</td>
-                                <td>{{ player.weighted_stats.fg3m|default(0)|round(1) }}</td>
-                                <td>{{ (player.weighted_stats.fg_percentage|default(0) * 100)|round(1) }}%</td>
-                                <td>{{ (player.weighted_stats.ft_percentage|default(0) * 100)|round(1) }}%</td>
-                                <td>{{ player.weighted_stats.turnovers|default(0)|round(1) }}</td>
-                                <td>
+                                <td class="cat-cell">{{ (st.points|default(0))|round(1) }}</td>
+                                <td class="cat-cell">{{ (st.rebounds|default(0))|round(1) }}</td>
+                                <td class="cat-cell">{{ (st.assists|default(0))|round(1) }}</td>
+                                <td class="cat-cell">{{ (st.steals|default(0))|round(1) }}</td>
+                                <td class="cat-cell">{{ (st.blocks|default(0))|round(1) }}</td>
+                                <td class="cat-cell">{{ (st.fg3m|default(st.three_pointers_made|default(0)))|round(1) }}</td>
+                                <td class="cat-cell">{{ (st.fg_percentage|default(0) * 100)|round(1) }}%</td>
+                                <td class="cat-cell">{{ (st.ft_percentage|default(0) * 100)|round(1) }}%</td>
+                                <td class="cat-cell">{{ (st.turnovers|default(0))|round(1) }}</td>
+                                <td class="trend-cell text-center">
                                     {% if player.trends.overall_trend == 'improving' %}
                                         <i class="fas fa-arrow-up text-success"></i>
                                     {% elif player.trends.overall_trend == 'declining' %}
@@ -134,10 +295,20 @@
                                         <i class="fas fa-minus text-warning"></i>
                                     {% endif %}
                                 </td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-info" onclick="showPlayerDetails('{{ player.player_id }}')">
-                                        <i class="fas fa-info-circle"></i>
-                                    </button>
+                                <td class="actions-cell text-center text-nowrap">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button class="btn btn-sm btn-outline-primary px-2 py-1 btn-compare-player" 
+                                                onclick="togglePlayerComparison(event, '{{ player.player_id }}', '{{ player.name|replace('\'', '\\\'') }}')" 
+                                                data-player-id="{{ player.player_id }}"
+                                                title="Select for comparison">
+                                            <i class="fas fa-balance-scale"></i> Compare
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-info px-2 py-1" 
+                                                onclick="event.stopPropagation(); showPlayerDetails('{{ player.player_id }}')" 
+                                                title="View detailed player stats">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -154,82 +325,156 @@
         </div>
     </div>
     
-    <div class="col-md-4">
+    <div class="col-lg-4 col-xl-3">
         <!-- Credit Budget Card -->
         <div class="card mb-3">
-            <div class="card-header bg-warning text-dark">
-                <h5><i class="fas fa-wallet"></i> Your Credit Budget</h5>
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-wallet"></i> Your Credit Budget</h5>
+                <span class="badge bg-dark" id="draftRosterCountBadge">{{ my_team|length if my_team else 0 }} / 15</span>
             </div>
-            <div class="card-body text-center">
-                <div class="mb-3">
-                    <h2 class="text-primary">{{ remaining_credit|default(200) }}</h2>
-                    <small class="text-muted">Remaining Credit / 200</small>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <h2 class="text-primary mb-0" id="budgetRemainingDisplay">${{ remaining_credit|default(200) }}</h2>
+                    <small class="text-muted">Remaining Credit / $200</small>
                 </div>
                 <div class="progress mb-3" style="height: 25px;">
-                    <div class="progress-bar {% if total_credit|default(0) > 180 %}bg-danger{% elif total_credit|default(0) > 150 %}bg-warning{% else %}bg-success{% endif %}" 
+                    <div id="budgetProgressBar" class="progress-bar {% if total_credit|default(0) > 180 %}bg-danger{% elif total_credit|default(0) > 150 %}bg-warning text-dark{% else %}bg-success{% endif %}" 
                          role="progressbar" 
-                         style="width: {{ (total_credit|default(0) / 200 * 100)|round }}%"
+                         style="width: {{ ((total_credit|default(0) / 200 * 100)|round) }}%;"
                          aria-valuenow="{{ total_credit|default(0) }}" 
                          aria-valuemin="0" 
                          aria-valuemax="200">
-                        {{ total_credit|default(0) }} / 200
+                        ${{ total_credit|default(0) }} / $200
                     </div>
                 </div>
-                <div class="alert alert-info mb-0">
-                    <small>
-                        <i class="fas fa-info-circle"></i>
-                        <strong>Selected Players:</strong> {{ my_team|length if my_team else 0 }}<br>
-                        <strong>Used:</strong> {{ total_credit|default(0) }} credit<br>
-                        <strong>Remaining:</strong> {{ remaining_credit|default(200) }} credit
-                    </small>
+
+                <div class="d-flex justify-content-between align-items-center mb-2 px-1 text-muted" style="font-size: 0.72rem;">
+                    <span><i class="fas fa-users text-primary"></i> 10 Starters + 3 BN + 2 IL</span>
+                    <span class="badge bg-light text-dark border">15 Slots</span>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0 small fw-bold text-muted">My Draft Roster</h6>
+                    <button class="btn btn-link btn-sm p-0 text-danger text-decoration-none" onclick="clearDraftTeam()" title="Clear team">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                </div>
+                
+                <div id="myDraftTeamList" class="list-group list-group-flush mb-3 border rounded" style="max-height: 200px; overflow-y: auto;">
+                    {% if my_team and my_team|length > 0 %}
+                        {% for p in my_team %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-2 py-1 small">
+                            <div>
+                                <strong>{{ p.name }}</strong>
+                                <span class="badge bg-secondary ms-1">{{ p.position|default('UTIL') }}</span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-warning text-dark">${{ p.credit|default(1) }}</span>
+                                <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="removePlayerFromDraftTeam('{{ p.name|replace('\'', '\\\'') }}')" title="Remove">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center text-muted py-3 small" id="noDraftPlayersMsg">
+                            No players added yet. Click on any player to add them to your team.
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="saveAsMyDraftTeam()" id="saveDraftTeamBtn">
+                        <i class="fas fa-save"></i> Save as "My Draft Team" for Matchup
+                    </button>
                 </div>
             </div>
         </div>
         
         <div class="card">
-            <div class="card-header">
-                <h5><i class="fas fa-info-circle"></i> Draft Strategy</h5>
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-chess text-warning"></i> Draft Strategy</h5>
+                <span class="badge bg-info">{{ '5-4 Punt' if strategy == 'punt_5_4' else 'Balanced' }}</span>
             </div>
             <div class="card-body">
-                <h6>Weighting System</h6>
-                <div class="progress mb-2">
-                    <div class="progress-bar bg-success" style="width: 60%">2024-25: 60%</div>
-                </div>
-                <div class="progress mb-2">
-                    <div class="progress-bar bg-info" style="width: 30%">2023-24: 30%</div>
-                </div>
-                <div class="progress mb-3">
-                    <div class="progress-bar bg-secondary" style="width: 10%">2022-23: 10%</div>
-                </div>
-                
-                <h6>Key Metrics</h6>
-                <ul class="list-unstyled">
-                    <li><i class="fas fa-coins text-warning"></i> Player Credit Value (1-100)</li>
-                    <li><i class="fas fa-chart-bar text-primary"></i> Fantasy Value Score</li>
-                    <li><i class="fas fa-clock text-info"></i> Per-Minute Production</li>
-                    <li><i class="fas fa-trending-up text-success"></i> Performance Trends</li>
-                    <li><i class="fas fa-shield-alt text-warning"></i> Injury Risk Assessment</li>
-                </ul>
-                
-                <hr>
-                
-                <h6>Credit System</h6>
-                <div class="alert alert-warning">
-                    <small>
-                        <i class="fas fa-coins"></i> <strong>Total Budget: 200 Credits</strong><br>
-                        • Superstars: 40-60 credits<br>
-                        • Good Players: 25-40 credits<br>
-                        • Average: 15-25 credits<br>
-                        • Bench: 5-15 credits
-                    </small>
-                </div>
+                <h6>Dynamic Season Weights ({{ season }})</h6>
+                {% set weight_colors = ['bg-success', 'bg-info', 'bg-secondary', 'bg-dark'] %}
+                {% if season_weights %}
+                    {% for s, w in season_weights.items() %}
+                    <div class="progress mb-2" style="height: 20px;">
+                        <div class="progress-bar {{ weight_colors[loop.index0 % 4] }}" style="width: {{ (w * 100)|round }}%;">
+                            {{ s }}: {{ (w * 100)|round }}%
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="progress mb-2">
+                        <div class="progress-bar bg-success" style="width: 60%">Current: 60%</div>
+                    </div>
+                    <div class="progress mb-2">
+                        <div class="progress-bar bg-info" style="width: 30%">Previous: 30%</div>
+                    </div>
+                    <div class="progress mb-3">
+                        <div class="progress-bar bg-secondary" style="width: 10%">2 Prior: 10%</div>
+                    </div>
+                {% endif %}
                 
                 <hr>
                 
-                <h6>Draft Tips</h6>
-                <div class="alert alert-info">
+                <h6>Configurable Strategy</h6>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="strategyOption" id="stratBalanced" value="balanced" {% if strategy != 'punt_5_4' %}checked{% endif %} onchange="toggleStrategyUI()">
+                    <label class="form-check-label fw-bold" for="stratBalanced">
+                        Strategy A — Balanced
+                    </label>
+                    <div class="text-muted small">Above average across all 9 categories. Avoids falling behind in any single category.</div>
+                </div>
+
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="strategyOption" id="stratPunt" value="punt_5_4" {% if strategy == 'punt_5_4' %}checked{% endif %} onchange="toggleStrategyUI()">
+                    <label class="form-check-label fw-bold" for="stratPunt">
+                        Strategy B — 5-4 Punt / Strength
+                    </label>
+                    <div class="text-muted small">Target 5 categories to dominate, keeping the other 4 near average.</div>
+                </div>
+
+                <div id="puntCategorySelector" class="p-2 border rounded bg-light mb-3" style="{% if strategy != 'punt_5_4' %}display: none;{% endif %}">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong class="small text-dark">Select 5 Categories:</strong>
+                        <span id="selectedCatCount" class="badge bg-primary">0 / 5</span>
+                    </div>
+                    <div class="row g-1 small">
+                        {% set cats = [('PTS', 'PTS'), ('REB', 'REB'), ('AST', 'AST'), ('STL', 'STL'), ('BLK', 'BLK'), ('3PM', '3PM'), ('FG%', 'FG%'), ('FT%', 'FT%'), ('TO', 'TO')] %}
+                        {% for code, label in cats %}
+                        <div class="col-4">
+                            <div class="form-check">
+                                <input class="form-check-input cat-checkbox" type="checkbox" value="{{ code }}" id="cat_{{ code }}" {% if code in target_categories %}checked{% endif %} onchange="updateCatCount()">
+                                <label class="form-check-label" for="cat_{{ code }}">{{ label }}</label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="d-grid gap-2 mb-3">
+                    <button class="btn btn-outline-primary btn-sm" onclick="applyStrategy()">
+                        <i class="fas fa-filter"></i> Apply Strategy to Rankings
+                    </button>
+                    <button class="btn btn-success btn-sm" onclick="openOptimizerModal()">
+                        <i class="fas fa-magic"></i> Optimize Team (Monte Carlo)
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#leagueAuctionModal">
+                        <i class="fas fa-dollar-sign"></i> Set League Auction Prices
+                    </button>
+                </div>
+
+                <h6>Valuation Guide</h6>
+                <div class="alert alert-warning py-2 mb-0">
                     <small>
-                        <i class="fas fa-lightbulb"></i> Focus on players with improving trends and low injury risk for consistent value.
+                        <i class="fas fa-coins text-warning"></i> <strong>Budget: $200</strong><br>
+                        • <strong>Actual:</strong> Real Yahoo league price<br>
+                        • <strong>Fair:</strong> Projected auction market value<br>
+                        • <strong>Model:</strong> Strategy-adjusted value
                     </small>
                 </div>
             </div>
@@ -248,7 +493,7 @@
                 </div>
             </div>
             <div class="card-body">
-                <p class="text-muted">Click on player rows to select them for comparison (2-5 players).</p>
+                <p class="text-muted">Click the <strong>Compare</strong> button next to any player to select them for comparison (2-5 players).</p>
                 <div id="comparison-area" class="mt-3">
                     <p class="text-center text-muted">No players selected</p>
                 </div>
@@ -283,6 +528,169 @@
 <script>
 let selectedPlayers = [];
 let currentPositionFilter = 'all';
+let currentSortCat = '{{ sort_cat or "" }}';
+let currentSortDir = '{{ sort_dir or "desc" }}';
+let currentStatsMode = '{{ mode or "per_game" }}';
+
+// Robust numerical formatters to prevent toFixed of undefined errors
+function safeNum(val, fallback = 0) {
+    if (val === null || val === undefined || val === '') return fallback;
+    const n = Number(val);
+    return isNaN(n) ? fallback : n;
+}
+
+function safeFixed(val, dec = 1, fallback = '-') {
+    if (val === null || val === undefined || val === '') return fallback;
+    const n = Number(val);
+    if (isNaN(n)) return fallback;
+    return n.toFixed(dec);
+}
+
+function safePct(val, dec = 1, fallback = '-') {
+    if (val === null || val === undefined || val === '') return fallback;
+    const n = Number(val);
+    if (isNaN(n)) return fallback;
+    return (n * 100).toFixed(dec) + '%';
+}
+
+function switchDraftMode(newMode) {
+    if (typeof switchGlobalStatsMode === 'function') {
+        switchGlobalStatsMode(newMode);
+    } else {
+        const url = new URL(window.location.href);
+        url.searchParams.set('mode', newMode);
+        window.location.href = url.toString();
+    }
+}
+
+function sortByCategory(category) {
+    const url = new URL(window.location.href);
+    if (currentSortCat === category) {
+        currentSortDir = (currentSortDir === 'desc') ? 'asc' : 'desc';
+    } else {
+        currentSortCat = category;
+        currentSortDir = (category === 'TOV' || category === 'TO') ? 'asc' : 'desc';
+    }
+    url.searchParams.set('sort_cat', currentSortCat);
+    url.searchParams.set('sort_dir', currentSortDir);
+    url.searchParams.set('mode', currentStatsMode);
+    window.location.href = url.toString();
+}
+
+function addPlayerToDraftTeam(event, playerId, playerName, credit, position, team) {
+    if (event) event.stopPropagation();
+    fetch('/api/draft/add-player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            player_id: playerId,
+            name: playerName,
+            credit: credit,
+            position: position,
+            team: team
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert(data.error || 'Could not add player.');
+            return;
+        }
+        updateDraftTeamUI(data);
+        const row = document.querySelector(`.player-row[data-player-id="${playerId}"]`);
+        if (row) {
+            row.classList.add('table-success');
+            setTimeout(() => row.classList.remove('table-success'), 1200);
+        }
+    })
+    .catch(err => alert('Error adding player: ' + err.message));
+}
+
+function removePlayerFromDraftTeam(playerName) {
+    fetch('/api/draft/remove-player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: playerName })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert(data.error || 'Could not remove player.');
+            return;
+        }
+        updateDraftTeamUI(data);
+    })
+    .catch(err => alert('Error removing player: ' + err.message));
+}
+
+function clearDraftTeam() {
+    if (!confirm('Clear all drafted players from your team?')) return;
+    fetch('/api/draft/clear-team', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) updateDraftTeamUI(data);
+        })
+        .catch(err => alert('Error clearing team: ' + err.message));
+}
+
+function saveAsMyDraftTeam() {
+    fetch('/api/draft/save-draft-roster', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Saved ${data.player_count} players as "My Draft Team"! You can now select this team in Matchup Simulator.`);
+            } else {
+                alert(data.error || 'Failed to save team.');
+            }
+        })
+        .catch(err => alert('Error saving draft roster: ' + err.message));
+}
+
+function updateDraftTeamUI(data) {
+    const total = data.total_credit || 0;
+    const remaining = data.remaining_credit !== undefined ? data.remaining_credit : (200 - total);
+    const team = data.team || [];
+    
+    const remainingEl = document.getElementById('budgetRemainingDisplay');
+    if (remainingEl) remainingEl.textContent = `$${remaining}`;
+    
+    const countBadge = document.getElementById('draftRosterCountBadge');
+    if (countBadge) countBadge.textContent = `${team.length} / 15`;
+    
+    const bar = document.getElementById('budgetProgressBar');
+    if (bar) {
+        const pct = Math.min(100, Math.round((total / 200) * 100));
+        bar.style.width = `${pct}%`;
+        bar.textContent = `$${total} / $200`;
+        bar.className = 'progress-bar ' + (total > 180 ? 'bg-danger' : (total > 150 ? 'bg-warning text-dark' : 'bg-success'));
+    }
+    
+    const list = document.getElementById('myDraftTeamList');
+    if (list) {
+        if (team.length === 0) {
+            list.innerHTML = `<div class="text-center text-muted py-3 small" id="noDraftPlayersMsg">No players added yet. Click on any player's name to add them to your team.</div>`;
+        } else {
+            let html = '';
+            team.forEach(p => {
+                const escapedName = (p.name || '').replace(/'/g, "\\'");
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-2 py-1 small">
+                        <div>
+                            <strong>${p.name}</strong>
+                            <span class="badge bg-secondary ms-1">${p.position || 'UTIL'}</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-warning text-dark">$${p.credit || 1}</span>
+                            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="removePlayerFromDraftTeam('${escapedName}')" title="Remove">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>`;
+            });
+            list.innerHTML = html;
+        }
+    }
+}
 
 function filterPosition(position) {
     const rows = document.querySelectorAll('.player-row');
@@ -320,7 +728,16 @@ function applyFilters() {
         const matchesSearch = searchTerm === '' || playerName.includes(searchTerm);
         
         // Check if matches position filter
-        const matchesPosition = currentPositionFilter === 'all' || position.includes(currentPositionFilter);
+        let matchesPosition = false;
+        if (currentPositionFilter === 'all') {
+            matchesPosition = true;
+        } else if (currentPositionFilter === 'G') {
+            matchesPosition = position.includes('PG') || position.includes('SG') || position.includes('G');
+        } else if (currentPositionFilter === 'F') {
+            matchesPosition = position.includes('SF') || position.includes('PF') || position.includes('F');
+        } else {
+            matchesPosition = position.includes(currentPositionFilter);
+        }
         
         // Show only if matches both filters
         if (matchesSearch && matchesPosition) {
@@ -339,78 +756,155 @@ function showPlayerDetails(playerId) {
     const modal = new bootstrap.Modal(document.getElementById('playerModal'));
     modal.show();
     
-        // Fetch real analysis data
-        document.getElementById('player-details-content').innerHTML = `
-                <div class="text-center py-4">
-                        <i class="fas fa-spinner fa-spin fa-2x"></i>
-                        <p>Loading player details...</p>
+    document.getElementById('player-details-content').innerHTML = `
+        <div class="text-center py-4">
+            <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
+            <p class="mt-2 text-muted">Loading player details...</p>
+        </div>`;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const curSeason = urlParams.get('season') || '{{ season }}';
+    
+    fetch(`/api/draft/player/${encodeURIComponent(playerId)}?season=${encodeURIComponent(curSeason)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) throw new Error(data.error || 'Failed to load');
+            const a = data.analysis || {};
+            const ws = a.weighted_stats || {};
+            const trends = a.trends || {};
+            const trendVal = (v) => safeNum(v);
+            const trendIcon = (v) => v > 5 ? '<i class="fas fa-arrow-up text-success"></i>' : (v < -5 ? '<i class="fas fa-arrow-down text-danger"></i>' : '<i class="fas fa-minus text-warning"></i>');
+            
+            document.getElementById('player-details-content').innerHTML = `
+                <div class="row g-3">
+                    <div class="col-12">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3">
+                                <div class="row text-center">
+                                    <div class="col-3">
+                                        <div class="small text-muted">Active Credit</div>
+                                        <div class="h4 mb-0 text-primary fw-bold">$${a.credit != null ? a.credit : '-'}</div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="small text-muted">League Auction Price</div>
+                                        <div class="h5 mb-0 fw-bold ${a.actual_auction_price != null ? 'text-success' : 'text-secondary'}">
+                                            ${a.actual_auction_price != null ? '$' + a.actual_auction_price : 'None (Using Model)'}
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="small text-muted">Fair Projected Value</div>
+                                        <div class="h5 mb-0 text-dark fw-bold">$${a.projected_fair_value != null ? a.projected_fair_value : (a.model_fair_value != null ? a.model_fair_value : '-')}</div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="small text-muted">Adjusted Auction Value</div>
+                                        <div class="h5 mb-0 text-info fw-bold">$${a.adjusted_auction_value != null ? a.adjusted_auction_value : (a.model_estimated_value != null ? a.model_estimated_value : '-')}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>${a.name || 'Player'} — Weighted Stats (${curSeason})</h6>
+                        <table class="table table-sm table-striped">
+                            <tr><td>Points</td><td class="text-end fw-bold">${safeFixed(ws.points, 1, '0.0')}</td></tr>
+                            <tr><td>Rebounds</td><td class="text-end fw-bold">${safeFixed(ws.rebounds, 1, '0.0')}</td></tr>
+                            <tr><td>Assists</td><td class="text-end fw-bold">${safeFixed(ws.assists, 1, '0.0')}</td></tr>
+                            <tr><td>Steals</td><td class="text-end fw-bold">${safeFixed(ws.steals, 1, '0.0')}</td></tr>
+                            <tr><td>Blocks</td><td class="text-end fw-bold">${safeFixed(ws.blocks, 1, '0.0')}</td></tr>
+                            <tr><td>3-Pointers Made</td><td class="text-end fw-bold">${safeFixed(ws.fg3m, 1, '0.0')}</td></tr>
+                            <tr><td>FG%</td><td class="text-end fw-bold">${ws.fg_percentage != null ? safePct(ws.fg_percentage, 1) : '-'}</td></tr>
+                            <tr><td>FT%</td><td class="text-end fw-bold">${ws.ft_percentage != null ? safePct(ws.ft_percentage, 1) : '-'}</td></tr>
+                            <tr><td>Turnovers</td><td class="text-end fw-bold">${safeFixed(ws.turnovers, 1, '0.0')}</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Historical Trends & Risks</h6>
+                        <ul class="list-group list-group-flush small">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Points Trend
+                                <span>${trendIcon(trendVal(trends.points_trend))} ${safeFixed(trends.points_trend, 1, '0.0')}%</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Rebounds Trend
+                                <span>${trendIcon(trendVal(trends.rebounds_trend))} ${safeFixed(trends.rebounds_trend, 1, '0.0')}%</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Assists Trend
+                                <span>${trendIcon(trendVal(trends.assists_trend))} ${safeFixed(trends.assists_trend, 1, '0.0')}%</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Overall Trend
+                                <span class="badge bg-secondary">${trends.overall_trend || 'stable'}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Injury Risk
+                                <span class="badge ${a.injury_risk === 'Low' ? 'bg-success' : (a.injury_risk === 'Medium' ? 'bg-warning text-dark' : 'bg-danger')}">${a.injury_risk || 'Unknown'}</span>
+                            </li>
+                        </ul>
+                    </div>
                 </div>`;
-        fetch(`/api/draft/player/${playerId}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.success) throw new Error(data.error || 'Failed to load');
-                const a = data.analysis;
-                const ws = a.weighted_stats || {};
-                const trends = a.trends || {};
-                const trendIcon = (v) => v > 5 ? '<i class="fas fa-arrow-up text-success"></i>' : (v < -5 ? '<i class="fas fa-arrow-down text-danger"></i>' : '<i class="fas fa-minus text-warning"></i>');
-                document.getElementById('player-details-content').innerHTML = `
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>${a.name} — Weighted Averages</h6>
-                            <table class="table table-sm">
-                                <tr><td>Points</td><td>${(ws.points||0).toFixed(1)}</td></tr>
-                                <tr><td>Rebounds</td><td>${(ws.rebounds||0).toFixed(1)}</td></tr>
-                                <tr><td>Assists</td><td>${(ws.assists||0).toFixed(1)}</td></tr>
-                                <tr><td>Steals</td><td>${(ws.steals||0).toFixed(1)}</td></tr>
-                                <tr><td>Blocks</td><td>${(ws.blocks||0).toFixed(1)}</td></tr>
-                                <tr><td>3-Pointers Made</td><td>${(ws.fg3m||0).toFixed(1)}</td></tr>
-                                <tr><td>FG%</td><td>${ws.fg_percentage!=null?(ws.fg_percentage*100).toFixed(1)+'%':'-'}</td></tr>
-                                <tr><td>FT%</td><td>${ws.ft_percentage!=null?(ws.ft_percentage*100).toFixed(1)+'%':'-'}</td></tr>
-                                <tr><td>Turnovers</td><td>${(ws.turnovers||0).toFixed(1)}</td></tr>
-                            </table>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Trend Analysis</h6>
-                            <div>${trendIcon(trends.points_trend||0)} Points: ${(trends.points_trend||0).toFixed?trends.points_trend.toFixed(1):trends.points_trend||0}%</div>
-                            <div>${trendIcon(trends.rebounds_trend||0)} Rebounds: ${(trends.rebounds_trend||0).toFixed?trends.rebounds_trend.toFixed(1):trends.rebounds_trend||0}%</div>
-                            <div>${trendIcon(trends.assists_trend||0)} Assists: ${(trends.assists_trend||0).toFixed?trends.assists_trend.toFixed(1):trends.assists_trend||0}%</div>
-                            <div class="mt-2"><strong>Overall:</strong> ${trends.overall_trend||'stable'}</div>
-                            <div class="mt-2"><strong>Injury risk:</strong> ${a.injury_risk||'unknown'}</div>
-                        </div>
-                    </div>`;
-            })
-            .catch(err => {
-                document.getElementById('player-details-content').innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
-            });
+        })
+        .catch(err => {
+            document.getElementById('player-details-content').innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
+        });
 }
 
-// Add click handlers for player selection (comparison feature)
+// Add click handlers: clicking player row/name adds to draft team
 document.addEventListener('DOMContentLoaded', function() {
     const playerRows = document.querySelectorAll('.player-row');
     playerRows.forEach(row => {
         row.addEventListener('click', function(e) {
-            if (e.target.closest('.btn')) return; // Don't select if clicking button
+            // Ignore click if user clicked on any button, link, or input inside row
+            if (e.target.closest('.btn') || e.target.closest('a') || e.target.closest('input')) return;
             
             const playerId = this.dataset.playerId;
             const playerName = this.dataset.playerName;
+            const credit = Number(this.dataset.playerCredit || 1);
+            const position = this.dataset.position;
+            const team = this.dataset.playerTeam || '';
             
-            // Toggle selection
-            this.classList.toggle('table-active');
-            
-            if (this.classList.contains('table-active')) {
-                // Add to selected players
-                if (!selectedPlayers.find(p => p.id === playerId)) {
-                    selectedPlayers.push({ id: playerId, name: playerName });
-                }
-            } else {
-                // Remove from selected players
-                selectedPlayers = selectedPlayers.filter(p => p.id !== playerId);
-            }
-            
-            updateSelectionUI();
+            addPlayerToDraftTeam(e, playerId, playerName, credit, position, team);
         });
     });
 });
+
+// Toggle player comparison selection via Compare button
+function togglePlayerComparison(event, playerId, playerName) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    
+    const row = document.querySelector(`.player-row[data-player-id="${playerId}"]`);
+    const btn = row ? row.querySelector('.btn-compare-player') : null;
+    
+    const existingIndex = selectedPlayers.findIndex(p => p.id === playerId);
+    if (existingIndex >= 0) {
+        // Remove from selected
+        selectedPlayers.splice(existingIndex, 1);
+        if (row) row.classList.remove('table-active');
+        if (btn) {
+            btn.classList.remove('btn-primary', 'active');
+            btn.classList.add('btn-outline-primary');
+            btn.innerHTML = '<i class="fas fa-balance-scale"></i> Compare';
+        }
+    } else {
+        // Add to selected (max 5 players)
+        if (selectedPlayers.length >= 5) {
+            alert('You can compare up to 5 players at a time.');
+            return;
+        }
+        selectedPlayers.push({ id: playerId, name: playerName });
+        if (row) row.classList.add('table-active');
+        if (btn) {
+            btn.classList.remove('btn-outline-primary');
+            btn.classList.add('btn-primary', 'active');
+            btn.innerHTML = '<i class="fas fa-check"></i> Compared';
+        }
+    }
+    
+    updateSelectionUI();
+}
 
 function updateSelectionUI() {
     const count = selectedPlayers.length;
@@ -441,6 +935,12 @@ function clearSelection() {
     selectedPlayers = [];
     document.querySelectorAll('.player-row').forEach(row => {
         row.classList.remove('table-active');
+        const btn = row.querySelector('.btn-compare-player');
+        if (btn) {
+            btn.classList.remove('btn-primary', 'active');
+            btn.classList.add('btn-outline-primary');
+            btn.innerHTML = '<i class="fas fa-balance-scale"></i> Compare';
+        }
     });
     updateSelectionUI();
 }
@@ -458,10 +958,16 @@ function compareSelectedPlayers() {
             <p>Loading comparison...</p>
         </div>`;
     
+    const urlParams = new URLSearchParams(window.location.search);
+    const curSeason = urlParams.get('season') || '{{ season }}';
+
     fetch('/api/draft/compare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player_ids: selectedPlayers.map(p => p.id) })
+        body: JSON.stringify({
+            player_ids: selectedPlayers.map(p => p.id),
+            season: curSeason
+        })
     })
     .then(r => r.json())
     .then(data => {
@@ -688,7 +1194,460 @@ async function importYahooTeam(teamKey, teamName) {
         modalBody.innerHTML = '<div class="alert alert-danger">An error occurred while importing roster. Please try again.</div>';
     }
 }
+
+// Strategy & Monte Carlo Optimizer Functions
+function toggleStrategyUI() {
+    const isPunt = document.getElementById('stratPunt').checked;
+    document.getElementById('puntCategorySelector').style.display = isPunt ? 'block' : 'none';
+}
+
+function updateCatCount() {
+    const checked = document.querySelectorAll('.cat-checkbox:checked');
+    document.getElementById('selectedCatCount').textContent = `${checked.length} / 5`;
+    if (checked.length > 5) {
+        alert('Please select at most 5 categories for the 5-4 Punt strategy.');
+    }
+}
+
+function applyStrategy() {
+    const url = new URL(window.location.href);
+    const strat = document.getElementById('stratPunt').checked ? 'punt_5_4' : 'balanced';
+    url.searchParams.set('strategy', strat);
+    
+    if (strat === 'punt_5_4') {
+        const checked = Array.from(document.querySelectorAll('.cat-checkbox:checked')).map(cb => cb.value);
+        if (checked.length !== 5) {
+            if (!confirm(`You have selected ${checked.length} categories. A 5-4 punt strategy works best with exactly 5 target categories. Proceed anyway?`)) {
+                return;
+            }
+        }
+        url.searchParams.set('categories', checked.join(','));
+    } else {
+        url.searchParams.delete('categories');
+    }
+    window.location.href = url.toString();
+}
+
+function openOptimizerModal() {
+    const modal = new bootstrap.Modal(document.getElementById('optimizerModal'));
+    modal.show();
+    const isPunt = document.getElementById('stratPunt').checked;
+    document.getElementById('optStrategySelect').value = isPunt ? 'punt_5_4' : 'balanced';
+    toggleOptCategorySelector();
+}
+
+function toggleOptCategorySelector() {
+    const isPunt = document.getElementById('optStrategySelect').value === 'punt_5_4';
+    document.getElementById('optPuntCategories').style.display = isPunt ? 'block' : 'none';
+}
+
+function runOptimizer() {
+    const btn = document.getElementById('runOptBtn');
+    const resultsDiv = document.getElementById('optResults');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Simulating...';
+    resultsDiv.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-success"></div><p class="mt-2 text-muted">Running Monte Carlo simulation across candidate rosters...</p></div>';
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const curSeason = urlParams.get('season') || '{{ season }}';
+    const strategy = document.getElementById('optStrategySelect').value;
+    const budget = parseFloat(document.getElementById('optBudgetInput').value) || 200.0;
+    const curMode = currentStatsMode || urlParams.get('mode') || '{{ mode or "per_game" }}';
+    const rosterSize = parseInt(document.getElementById('optRosterSizeSelect')?.value || '15', 10);
+    
+    let targetCats = null;
+    if (strategy === 'punt_5_4') {
+        targetCats = Array.from(document.querySelectorAll('.opt-cat-cb:checked')).map(cb => cb.value);
+        if (targetCats.length === 0) {
+            targetCats = ['PTS', 'REB', 'AST', 'STL', 'BLK'];
+        }
+    }
+    
+    fetch('/api/draft/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            season: curSeason,
+            strategy: strategy,
+            target_categories: targetCats,
+            budget: budget,
+            roster_size: rosterSize,
+            num_simulations: 150,
+            mode: curMode
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Re-Run Simulation';
+        if (!data.success) {
+            resultsDiv.innerHTML = `<div class="alert alert-danger">${data.error || 'Optimization failed'}</div>`;
+            return;
+        }
+        renderOptimizerResults(data);
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Re-Run Simulation';
+        resultsDiv.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+    });
+}
+
+function renderOptimizerResults(data) {
+    const roster = data.optimal_roster || [];
+    const stats = data.simulated_stats || {};
+    const winRate = data.simulated_win_rate ? (data.simulated_win_rate * 100).toFixed(1) : '-';
+    const targetSize = parseInt(document.getElementById('optRosterSizeSelect')?.value || (roster.length >= 15 ? 15 : 13), 10);
+    
+    let starterCount = 0;
+    let bnCount = 0;
+    let ilCount = 0;
+    roster.forEach(p => {
+        const slot = p.roster_slot || '';
+        if (slot === 'BN') bnCount++;
+        else if (slot === 'IL' || slot === 'INJ') ilCount++;
+        else starterCount++;
+    });
+
+    let html = `
+        <div class="card mb-3 border-success">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <strong>Simulated Roster Outcome (${roster.length} Players: ${starterCount} Starters, ${bnCount} BN, ${ilCount} IL)</strong>
+                <span class="badge bg-light text-dark">Sim Win Rate: ${winRate}%</span>
+            </div>
+            <div class="card-body p-3">
+                <div class="row text-center mb-3">
+                    <div class="col-4">
+                        <small class="text-muted d-block">Total Cost</small>
+                        <h4 class="text-primary mb-0">$${data.total_cost || 0}</h4>
+                    </div>
+                    <div class="col-4">
+                        <small class="text-muted d-block">Budget Remaining</small>
+                        <h4 class="text-success mb-0">$${data.remaining_budget || 0}</h4>
+                    </div>
+                    <div class="col-4">
+                        <small class="text-muted d-block">Roster Size</small>
+                        <h4 class="text-dark mb-0">${roster.length} / ${targetSize}</h4>
+                    </div>
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center border-bottom pb-1 mb-2">
+                    <h6 class="mb-0">Recommended ${roster.length}-Player Roster:</h6>
+                    <div class="small">
+                        <span class="badge bg-primary me-1">10 Starters</span>
+                        <span class="badge bg-secondary me-1">3 Bench</span>
+                        <span class="badge bg-danger">2 IL</span>
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height: 380px;">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr><th>Slot</th><th>Player</th><th>Pos</th><th>Team</th><th>Cost</th><th>PTS</th><th>REB</th><th>AST</th><th>ST</th><th>BLK</th><th>Status/Risk</th></tr>
+                        </thead>
+                        <tbody>`;
+                        
+    roster.forEach((p, idx) => {
+        const s = p.displayed_stats || p.weighted_stats || p.stats || p.current_season_stats || {};
+        const pts = safeNum(s.points !== undefined ? s.points : (s.pts !== undefined ? s.pts : s.ppg));
+        const reb = safeNum(s.rebounds !== undefined ? s.rebounds : (s.reb !== undefined ? s.reb : s.rpg));
+        const ast = safeNum(s.assists !== undefined ? s.assists : (s.ast !== undefined ? s.ast : s.apg));
+        const stl = safeNum(s.steals !== undefined ? s.steals : (s.stl !== undefined ? s.stl : s.spg));
+        const blk = safeNum(s.blocks !== undefined ? s.blocks : (s.blk !== undefined ? s.blk : s.bpg));
+        const slot = p.roster_slot || ('P' + (idx+1));
+        
+        let slotBadgeClass = 'bg-primary';
+        if (slot === 'BN') slotBadgeClass = 'bg-secondary';
+        else if (slot === 'IL' || slot === 'INJ') slotBadgeClass = 'bg-danger';
+
+        const riskBadge = (p.injury_risk === 'High' || p.is_injured) ? '<span class="badge bg-danger">IL Risk</span>' : 
+                         (p.injury_risk === 'Moderate' ? '<span class="badge bg-warning text-dark">Mod</span>' : 
+                         '<span class="badge bg-light text-muted border">Healthy</span>');
+
+        html += `
+            <tr ${slot === 'IL' ? 'class="table-light"' : ''}>
+                <td><span class="badge ${slotBadgeClass}">${slot}</span></td>
+                <td><strong>${p.name}</strong></td>
+                <td><span class="badge bg-light text-dark border">${p.position}</span></td>
+                <td>${p.team}</td>
+                <td class="text-primary fw-bold">$${p.credit || 0}</td>
+                <td>${pts.toFixed(1)}</td>
+                <td>${reb.toFixed(1)}</td>
+                <td>${ast.toFixed(1)}</td>
+                <td>${stl.toFixed(1)}</td>
+                <td>${blk.toFixed(1)}</td>
+                <td>${riskBadge}</td>
+            </tr>`;
+    });
+    
+    html += `</tbody></table></div>`;
+    
+    if (Object.keys(stats).length > 0) {
+        html += `
+            <h6 class="mt-3 border-bottom pb-1">Expected Team Category Production:</h6>
+            <div class="d-flex flex-wrap gap-2 small">
+                <span class="badge bg-light text-dark border">PTS: ${stats.points ? stats.points.toFixed(1) : '-'}</span>
+                <span class="badge bg-light text-dark border">REB: ${stats.rebounds ? stats.rebounds.toFixed(1) : '-'}</span>
+                <span class="badge bg-light text-dark border">AST: ${stats.assists ? stats.assists.toFixed(1) : '-'}</span>
+                <span class="badge bg-light text-dark border">STL: ${stats.steals ? stats.steals.toFixed(1) : '-'}</span>
+                <span class="badge bg-light text-dark border">BLK: ${stats.blocks ? stats.blocks.toFixed(1) : '-'}</span>
+                <span class="badge bg-light text-dark border">3PM: ${stats.fg3m ? stats.fg3m.toFixed(1) : '-'}</span>
+                <span class="badge bg-light text-dark border">FG%: ${stats.fg_percentage ? (stats.fg_percentage*100).toFixed(1) + '%' : '-'}</span>
+                <span class="badge bg-light text-dark border">FT%: ${stats.ft_percentage ? (stats.ft_percentage*100).toFixed(1) + '%' : '-'}</span>
+                <span class="badge bg-light text-dark border">TO: ${stats.turnovers ? stats.turnovers.toFixed(1) : '-'}</span>
+            </div>`;
+    }
+    
+    html += `</div></div>`;
+    document.getElementById('optResults').innerHTML = html;
+}
+
+function onAuctionPlayerSelected() {
+    const sel = document.getElementById('auctionPlayerSelect');
+    const opt = sel ? sel.options[sel.selectedIndex] : null;
+    const box = document.getElementById('auctionPlayerValuationBox');
+    const priceInput = document.getElementById('auctionPlayerPrice');
+    
+    if (!opt || !opt.value) {
+        if (box) box.style.display = 'none';
+        return;
+    }
+    if (box) box.style.display = 'block';
+    const fair = opt.dataset.fair || '-';
+    const adj = opt.dataset.adj || '-';
+    const actual = opt.dataset.actual;
+    
+    const fairEl = document.getElementById('dispFairVal');
+    const adjEl = document.getElementById('dispAdjVal');
+    const actualEl = document.getElementById('dispActualVal');
+    
+    if (fairEl) fairEl.textContent = '$' + fair;
+    if (adjEl) adjEl.textContent = '$' + adj;
+    if (actualEl) actualEl.textContent = actual ? ('$' + actual) : 'None';
+    
+    if (priceInput) {
+        if (actual) {
+            priceInput.value = actual;
+        } else if (adj !== '-') {
+            priceInput.value = Math.round(Number(adj));
+        } else if (fair !== '-') {
+            priceInput.value = Math.round(Number(fair));
+        }
+    }
+}
+
+function saveLeagueAuctionPrice() {
+    const sel = document.getElementById('auctionPlayerSelect');
+    const name = sel ? sel.value.trim() : '';
+    const price = parseFloat(document.getElementById('auctionPlayerPrice').value);
+    if (!name || isNaN(price) || price < 0) {
+        alert('Please select a player and enter a non-negative price.');
+        return;
+    }
+    
+    fetch('/api/draft/auction-values', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prices: { [name]: price } })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Failed to save price: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => alert('Error saving auction price: ' + err.message));
+}
+
+function resetPlayerAuctionPrice(name) {
+    if (!name) return;
+    fetch('/api/draft/auction-values/reset-player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_name: name })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Failed to reset price: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => alert('Error resetting price: ' + err.message));
+}
+
+function resetAllAuctionPrices() {
+    if (!confirm('Reset all custom league auction prices back to model values?')) return;
+    fetch('/api/draft/auction-values/reset-all', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert('Failed to reset all prices: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Error resetting all prices: ' + err.message));
+}
 </script>
+
+<!-- Monte Carlo Draft Optimizer Modal -->
+<div class="modal fade" id="optimizerModal" tabindex="-1" aria-labelledby="optimizerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="optimizerModalLabel">
+                    <i class="fas fa-magic text-warning"></i> Monte Carlo Draft Roster Optimizer
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 mb-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Strategy</label>
+                        <select class="form-select form-select-sm" id="optStrategySelect" onchange="toggleOptCategorySelector()">
+                            <option value="balanced">Strategy A — Balanced (All 9 Categories)</option>
+                            <option value="punt_5_4">Strategy B — 5-4 Punt / Strength</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">Budget ($)</label>
+                        <input type="number" class="form-control form-control-sm" id="optBudgetInput" value="200" min="50" max="500">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Roster Format</label>
+                        <select class="form-select form-select-sm" id="optRosterSizeSelect">
+                            <option value="15" selected>15 Players (10 Starters + 3 BN + 2 IL)</option>
+                            <option value="13">13 Players (Standard)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <button type="button" class="btn btn-success btn-sm w-100" id="runOptBtn" onclick="runOptimizer()">
+                            <i class="fas fa-play"></i> Run Simulation
+                        </button>
+                    </div>
+                </div>
+
+                <div id="optPuntCategories" class="p-2 border rounded bg-light mb-3" style="display: none;">
+                    <div class="small fw-bold mb-1">Target 5 Categories to Dominate:</div>
+                    <div class="d-flex flex-wrap gap-3 small">
+                        {% for c in ['PTS', 'REB', 'AST', 'STL', 'BLK', '3PM', 'FG%', 'FT%', 'TO'] %}
+                        <div class="form-check">
+                            <input class="form-check-input opt-cat-cb" type="checkbox" value="{{ c }}" id="opt_cb_{{ c }}" {% if c in target_categories or c in ['PTS', 'REB', 'AST', 'STL', 'BLK'] %}checked{% endif %}>
+                            <label class="form-check-label" for="opt_cb_{{ c }}">{{ c }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div id="optResults">
+                    <div class="alert alert-info text-center py-4">
+                        <i class="fas fa-info-circle fa-2x mb-2 text-info"></i>
+                        <p class="mb-0">Click <strong>Run Simulation</strong> above to find the optimal 15-player roster (10 Starters: PG, SG, G, SF, PF, F, C, C, Util, Util + 3 BN + 2 IL) satisfying positional constraints and your auction budget ($200).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- League Auction Values Modal -->
+<div class="modal fade" id="leagueAuctionModal" tabindex="-1" aria-labelledby="leagueAuctionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="leagueAuctionModalLabel">
+                    <i class="fas fa-dollar-sign text-warning"></i> Set League Auction Price
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">
+                    Calibrate the league auction model by setting real prices paid for players (e.g. Jokic $72 &rarr; $100). All other player values will automatically scale consistently based on your league's spending calibration.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Select Player</label>
+                    <select class="form-select" id="auctionPlayerSelect" onchange="onAuctionPlayerSelected()">
+                        <option value="">-- Choose a Player --</option>
+                        {% for p in rankings %}
+                        <option value="{{ p.name }}"
+                                data-fair="{{ p.model_fair_value|default(0) }}"
+                                data-adj="{{ p.adjusted_auction_value|default(0) }}"
+                                data-actual="{{ p.actual_auction_price if p.actual_auction_price is not none else '' }}">
+                            {{ p.name }} (${{ p.credit|default(1) }} - {{ p.position }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div id="auctionPlayerValuationBox" class="p-2 border rounded bg-light mb-3" style="display: none;">
+                    <div class="row text-center small">
+                        <div class="col-4">
+                            <span class="text-muted d-block" style="font-size: 0.75rem;">Model Fair</span>
+                            <strong id="dispFairVal" class="text-dark">-</strong>
+                        </div>
+                        <div class="col-4">
+                            <span class="text-muted d-block" style="font-size: 0.75rem;">Current Adj</span>
+                            <strong id="dispAdjVal" class="text-info">-</strong>
+                        </div>
+                        <div class="col-4">
+                            <span class="text-muted d-block" style="font-size: 0.75rem;">Real Override</span>
+                            <strong id="dispActualVal" class="text-success">-</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Actual League Auction Price ($)</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="number" class="form-control" id="auctionPlayerPrice" placeholder="e.g. 100" min="0" max="200">
+                    </div>
+                    <small class="text-muted">Setting an actual price acts as a real calibration point for the entire league.</small>
+                </div>
+                
+                <div class="d-grid mb-3">
+                    <button type="button" class="btn btn-primary" onclick="saveLeagueAuctionPrice()">
+                        <i class="fas fa-save"></i> Save League Price Calibration
+                    </button>
+                </div>
+
+                <hr>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0 small fw-bold text-muted">Active League Overrides</h6>
+                    {% if league_auction_values and league_auction_values|length > 0 %}
+                    <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" onclick="resetAllAuctionPrices()" title="Reset all custom prices">
+                        <i class="fas fa-trash"></i> Reset All
+                    </button>
+                    {% endif %}
+                </div>
+
+                <div class="list-group list-group-flush border rounded" style="max-height: 180px; overflow-y: auto;">
+                    {% if league_auction_values and league_auction_values|length > 0 %}
+                        {% for name, price in league_auction_values.items() %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-2 py-1 small">
+                            <div>
+                                <strong>{{ name }}</strong>
+                                <span class="badge bg-primary ms-1">${{ price }}</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="resetPlayerAuctionPrice('{{ name|replace('\'', '\\\'') }}')" title="Reset to model value">
+                                <i class="fas fa-undo"></i> Reset
+                            </button>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center text-muted py-2 small">
+                            No custom player prices set yet.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Yahoo Import Modal -->
 <div class="modal fade" id="importYahooModal" tabindex="-1" aria-labelledby="importYahooModalLabel" aria-hidden="true">

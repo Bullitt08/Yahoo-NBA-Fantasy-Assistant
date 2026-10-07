@@ -226,7 +226,10 @@ if ($htmlStart -gt 0) {{ $htmlText = $htmlText.Substring($htmlStart) }}
 @nba_bp.route('/players')
 def players_page():
     """Render the players page"""
-    return render_template('players.html')
+    from app import data_manager
+    return render_template('players.html',
+                           seasons=data_manager.available_seasons,
+                           current_season=data_manager.current_season)
 
 
 @nba_bp.route('/get-stats', methods=['GET'])

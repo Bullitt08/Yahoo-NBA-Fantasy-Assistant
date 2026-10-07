@@ -6,6 +6,7 @@ Using real Basketball Reference data
 
 import numpy as np
 from itertools import combinations
+from typing import List, Dict, Optional, Any
 
 
 class RecommendationEngine:
@@ -17,7 +18,7 @@ class RecommendationEngine:
         self.draft_assistant = draft_assistant
         self.other_teams_rosters = []  # Will store rosters of other teams for trade suggestions
         
-    def get_recommendations_for_roster(self, current_roster, free_agents, all_players, max_recommendations=100, other_teams_rosters=None):
+    def get_recommendations_for_roster(self, current_roster, free_agents, all_players, max_recommendations=100, other_teams_rosters=None, remaining_credit=None, **kwargs):
         """Get comprehensive roster move recommendations using real data
         
         Args:
@@ -26,6 +27,7 @@ class RecommendationEngine:
             all_players: All NBA players
             max_recommendations: Maximum number of recommendations to return
             other_teams_rosters: List of other teams' rosters for trade suggestions
+            remaining_credit: Maximum credit difference user can afford (optional)
         """
         
         try:
@@ -36,11 +38,11 @@ class RecommendationEngine:
             if other_teams_rosters:
                 self.other_teams_rosters = other_teams_rosters
             
-            print(f"DEBUG: Starting recommendation generation - Roster: {len(current_roster)}, FAs: {len(free_agents)}, Other Teams: {len(self.other_teams_rosters) if self.other_teams_rosters else 0}")
+            print(f"DEBUG: Starting recommendation generation - Roster: {len(current_roster)}, FAs: {len(free_agents)}, Other Teams: {len(self.other_teams_rosters) if self.other_teams_rosters else 0}, Remaining Credit: {remaining_credit}")
             
             # 1. Simple 1-for-1 swaps
             single_swap_recs = self._analyze_single_swaps(
-                current_roster, free_agents
+                current_roster, free_agents, remaining_credit=remaining_credit
             )
             print(f"DEBUG: Found {len(single_swap_recs)} single swap recommendations")
             for rec in single_swap_recs:
@@ -52,7 +54,7 @@ class RecommendationEngine:
             # 2. Multi-player trades (2-for-2, 3-for-3, 4-for-4, 5-for-5)
             print(f"DEBUG: Starting multi-player swap analysis...")
             multi_swap_recs = self._analyze_multi_player_swaps(
-                current_roster, free_agents
+                current_roster, free_agents, remaining_credit=remaining_credit
             )
             print(f"DEBUG: Found {len(multi_swap_recs)} multi-swap recommendations")
             for rec in multi_swap_recs:
@@ -65,7 +67,7 @@ class RecommendationEngine:
             
             # 3. Value upgrades (better performance) - FREE AGENTS ONLY
             budget_upgrades = self._find_budget_upgrades(
-                current_roster, free_agents
+                current_roster, free_agents, remaining_credit=remaining_credit
             )
             print(f"DEBUG: Found {len(budget_upgrades)} value upgrade recommendations")
             for rec in budget_upgrades:
@@ -111,15 +113,15 @@ class RecommendationEngine:
         add_names = tuple(sorted([p['name'] for p in rec.get('add_players', [])]))
         return (drop_names, add_names)
     
-    def _analyze_add_drop_moves_real_data(self, current_roster, free_agents):
+    def _analyze_add_drop_moves_real_data(self, current_roster, free_agents, remaining_credit=None):
         """DEPRECATED - Use _analyze_single_swaps instead"""
-        return self._analyze_single_swaps(current_roster, free_agents)
+        return self._analyze_single_swaps(current_roster, free_agents, remaining_credit=remaining_credit)
     
-    def _analyze_single_swaps(self, current_roster, free_agents):
+    def _analyze_single_swaps(self, current_roster, free_agents, remaining_credit=None):
         """Analyze 1-for-1 player swaps for ALL roster players with position consideration"""
         recommendations = []
         
-        print(f"🔍 _analyze_single_swaps: Roster={len(current_roster)}, Free Agents={len(free_agents)}")
+        print(f"[DEBUG] _analyze_single_swaps: Roster={len(current_roster)}, Free Agents={len(free_agents)}")
         
         # Sort roster by value to identify upgrade candidates
         sorted_roster = sorted(current_roster, key=lambda x: self._calculate_player_value(x))
@@ -135,12 +137,19 @@ class RecommendationEngine:
         # Check ALL roster players for potential upgrades
         for roster_player in sorted_roster:
             roster_value = self._calculate_player_value(roster_player)
+            roster_credit = self._calculate_player_credit(roster_player)
             roster_position = roster_player.get('position', '')
             
             # Find better free agents
             for fa in sorted_free_agents:
                 fa_value = self._calculate_player_value(fa)
+                fa_credit = self._calculate_player_credit(fa)
                 fa_position = fa.get('position', '')
+                
+                # Check credit constraint if applicable
+                credit_change = fa_credit - roster_credit
+                if remaining_credit is not None and credit_change > remaining_credit:
+                    continue
                 
                 # Check position compatibility
                 position_compatible = self._check_position_compatibility(roster_position, fa_position)
@@ -162,6 +171,7 @@ class RecommendationEngine:
                                 'position': roster_player.get('position', '-'),
                                 'stats': roster_player.get('stats', {}),
                                 'value': round(roster_value, 1),
+                                'credit': roster_credit,
                                 'fantasy_team': roster_player.get('fantasy_team', 'My Team')
                             }],
                             'add_players': [{
@@ -170,14 +180,16 @@ class RecommendationEngine:
                                 'position': fa.get('position', '-'),
                                 'stats': fa.get('stats', {}),
                                 'value': round(fa_value, 1),
+                                'credit': fa_credit,
                                 'fantasy_team': fa.get('fantasy_team', 'Free Agent')
                             }],
+                            'credit_change': credit_change,
                             'impact_score': round(improvement, 1),
                             'all_categories': category_changes.get('all_categories', []),
                             'category_improvements': category_changes['improvements'],
                             'category_declines': category_changes['declines'],
                             'reasoning': self._generate_swap_reasoning(
-                                [roster_player], [fa], improvement, 0, category_changes
+                                [roster_player], [fa], improvement, credit_change, category_changes
                             ),
                             'priority': 'high' if improvement > 10.0 else 'medium'
                         })
@@ -189,7 +201,7 @@ class RecommendationEngine:
         
         return recommendations
     
-    def _analyze_multi_player_swaps(self, current_roster, free_agents):
+    def _analyze_multi_player_swaps(self, current_roster, free_agents, remaining_credit=None):
         """Analyze 2-3 player swaps with position balance"""
         recommendations = []
         
@@ -213,11 +225,17 @@ class RecommendationEngine:
             
             for drop_combo in roster_combos:
                 drop_value_total = sum(self._calculate_player_value(p) for p in drop_combo)
+                drop_credit_total = sum(self._calculate_player_credit(p) for p in drop_combo)
                 drop_positions = [p.get('position', '') for p in drop_combo]
                 
                 for add_combo in fa_combos:
                     add_value_total = sum(self._calculate_player_value(p) for p in add_combo)
+                    add_credit_total = sum(self._calculate_player_credit(p) for p in add_combo)
                     add_positions = [p.get('position', '') for p in add_combo]
+                    
+                    credit_change = add_credit_total - drop_credit_total
+                    if remaining_credit is not None and credit_change > remaining_credit:
+                        continue
                     
                     value_change = add_value_total - drop_value_total
                     
@@ -225,8 +243,8 @@ class RecommendationEngine:
                     position_balanced = self._check_multi_position_balance(drop_positions, add_positions)
                     
                     # Only if significant improvement
-                    if value_change > threshold:
-                        print(f"  ✅ Found {swap_size}-for-{swap_size}: value_change={value_change:.1f}")
+                    if value_change > threshold and position_balanced:
+                        print(f"  [+] Found {swap_size}-for-{swap_size}: value_change={value_change:.1f}")
                         
                         # Calculate overall category improvements
                         all_improvements = []
@@ -251,6 +269,7 @@ class RecommendationEngine:
                                 'team': p.get('team', '-'),
                                 'position': p.get('position', '-'),
                                 'stats': p.get('stats', {}),
+                                'credit': self._calculate_player_credit(p),
                                 'fantasy_team': p.get('fantasy_team', 'My Team')
                             } for p in drop_combo],
                             'add_players': [{
@@ -258,14 +277,16 @@ class RecommendationEngine:
                                 'team': p.get('team', '-'),
                                 'position': p.get('position', '-'),
                                 'stats': p.get('stats', {}),
+                                'credit': self._calculate_player_credit(p),
                                 'fantasy_team': p.get('fantasy_team', 'Free Agent')
                             } for p in add_combo],
+                            'credit_change': credit_change,
                             'impact_score': round(value_change, 1),
                             'all_categories': combined_changes.get('all_categories', []),
                             'category_improvements': combined_changes['improvements'],
                             'category_declines': combined_changes['declines'],
                             'reasoning': self._generate_swap_reasoning(
-                                list(drop_combo), list(add_combo), value_change, 0, combined_changes
+                                list(drop_combo), list(add_combo), value_change, credit_change, combined_changes
                             ),
                             'priority': 'high' if value_change > (threshold * 2) else 'medium'
                         })
@@ -278,19 +299,25 @@ class RecommendationEngine:
         print(f"DEBUG: Total multi-swap recommendations found: {len(recommendations)}")
         return recommendations
     
-    def _find_budget_upgrades(self, current_roster, free_agents):
+    def _find_budget_upgrades(self, current_roster, free_agents, remaining_credit=None):
         """Find value upgrades (better performance)"""
         recommendations = []
         
         # Check ALL roster players for value opportunities
         for roster_player in current_roster:
             roster_value = self._calculate_player_value(roster_player)
+            roster_credit = self._calculate_player_credit(roster_player)
             roster_position = roster_player.get('position', '')
             
             # Find better performing FAs
             for fa in free_agents:
                 fa_value = self._calculate_player_value(fa)
+                fa_credit = self._calculate_player_credit(fa)
                 fa_position = fa.get('position', '')
+                
+                credit_change = fa_credit - roster_credit
+                if remaining_credit is not None and credit_change > remaining_credit:
+                    continue
                 
                 # Check position compatibility
                 position_compatible = self._check_position_compatibility(roster_position, fa_position)
@@ -305,6 +332,8 @@ class RecommendationEngine:
                     # Build reasoning with category details
                     improvement_str = ', '.join(category_changes['improvements'][:3]) if category_changes['improvements'] else 'overall value'
                     
+                    cost_str = f" (Costs {credit_change} credits)" if credit_change > 0 else f" (Saves {abs(credit_change)} credits)" if credit_change < 0 else ""
+                    
                     recommendations.append({
                         'type': 'budget_upgrade',
                         'swap_type': 'value-play',
@@ -313,6 +342,7 @@ class RecommendationEngine:
                             'team': roster_player.get('team', '-'),
                             'position': roster_player.get('position', '-'),
                             'stats': roster_player.get('stats', {}),
+                            'credit': roster_credit,
                             'fantasy_team': roster_player.get('fantasy_team', 'My Team')
                         }],
                         'add_players': [{
@@ -320,12 +350,14 @@ class RecommendationEngine:
                             'team': fa.get('team', '-'),
                             'position': fa.get('position', '-'),
                             'stats': fa.get('stats', {}),
+                            'credit': fa_credit,
                             'fantasy_team': fa.get('fantasy_team', 'Free Agent')
                         }],
+                        'credit_change': credit_change,
                         'impact_score': round(improvement, 1),
                         'category_improvements': category_changes['improvements'],
                         'category_declines': category_changes['declines'],
-                        'reasoning': f"💎 Value pick: {fa['name']} is {round((fa_value/roster_value - 1) * 100)}% better! ({improvement_str})",
+                        'reasoning': f"💎 Value pick: {fa['name']} is {round((fa_value/roster_value - 1) * 100)}% better! ({improvement_str}){cost_str}",
                         'priority': 'high'
                     })
         
@@ -431,13 +463,20 @@ class RecommendationEngine:
     
     def _calculate_player_credit(self, player):
         """Calculate player credit using DraftAssistant if available"""
+        if player.get('credit') is not None:
+            return player['credit']
+        
         if not self.draft_assistant:
             # Fallback simple calculation
-            return int(self._calculate_player_value(player) / 10)
+            credit = max(1, int(self._calculate_player_value(player) / 10))
+            player['credit'] = credit
+            return credit
         
         stats = player.get('stats', {})
         minutes = player.get('minutes', 0)
-        return self.draft_assistant.calculate_player_credit(stats, minutes)
+        credit = self.draft_assistant.calculate_player_credit(stats, minutes)
+        player['credit'] = credit
+        return credit
     
     def _check_position_compatibility(self, pos1, pos2):
         """Check if two positions are compatible for swapping"""
@@ -653,236 +692,222 @@ class RecommendationEngine:
             else:
                 reason = f"Swap {drop_names} for {add_names}: +{round(improvement, 1)} total value"
         
-        return reason
-    
-    def _analyze_trade_opportunities(self, current_roster, other_teams_rosters):
-        """Analyze realistic trade opportunities with other teams
+        if credit_change > 0:
+            reason += f" (Costs {credit_change} credits)"
+        elif credit_change < 0:
+            reason += f" (Saves {abs(credit_change)} credits)"
         
-        Only suggests balanced trades where values are similar (within 20%)
-        to prevent unrealistic suggestions like trading Alex Sarr for Jokic
+        return reason
+
+    def _evaluate_candidate_trade(
+        self,
+        current_roster: Optional[List[Dict]] = None,
+        partner_roster: Optional[List[Dict]] = None,
+        my_players: Optional[List[Dict]] = None,
+        their_players: Optional[List[Dict]] = None,
+        partner_team_name: str = "Opponent",
+        swap_type: str = 'trade-1-for-1',
+        **kwargs
+    ) -> Optional[Dict]:
         """
+        Evaluate a candidate trade:
+        - Rejects unrealistic trades (huge value disparities, star-for-scrub, etc.)
+        - Considers category surpluses and deficits for both teams
+        - Calculates Win Probability before trade -> after trade using MatchupSimulator
+        - Evaluates if the trade is mutually beneficial for BOTH teams
+        - Ranks by usefulness and plausibility
+        """
+        if kwargs.get('my_roster') is not None:
+            current_roster = kwargs['my_roster']
+        if kwargs.get('opp_roster') is not None:
+            partner_roster = kwargs['opp_roster']
+        if kwargs.get('give_player') is not None:
+            gp = kwargs['give_player']
+            my_players = [gp] if isinstance(gp, dict) else list(gp)
+        if kwargs.get('receive_player') is not None:
+            rp = kwargs['receive_player']
+            their_players = [rp] if isinstance(rp, dict) else list(rp)
+        if kwargs.get('opp_name') is not None:
+            partner_team_name = kwargs['opp_name']
+
+        current_roster = current_roster or []
+        partner_roster = partner_roster or []
+        if not my_players or not their_players:
+            return None
+
+        my_total_value = sum(self._calculate_player_value(p) for p in my_players)
+        their_total_value = sum(self._calculate_player_value(p) for p in their_players)
+
+        if my_total_value <= 0 or their_total_value <= 0:
+            return None
+
+        # Value ratio check (must be within realistic boundary)
+        value_ratio = their_total_value / max(0.1, my_total_value)
+        # Avoid massively one-sided trades (giving away 40%+ more value or asking for 50%+ more)
+        if value_ratio < 0.60 or value_ratio > 1.65:
+            return None
+
+        # Star disparity check: A superstar (> 50 value) must not be traded 1-for-1 for a role player (< 25)
+        max_my = max(self._calculate_player_value(p) for p in my_players)
+        max_their = max(self._calculate_player_value(p) for p in their_players)
+        if len(my_players) == 1 and len(their_players) == 1:
+            if (max_my >= 50 and max_their < 25) or (max_their >= 50 and max_my < 25):
+                return None
+
+        # Positional compatibility check:
+        # Cross-position trades (e.g., trading excess PG for needed C) are common in fantasy basketball.
+        # We only reject if positions are completely incompatible in a multi-player swap.
+        my_positions = [p.get('position', '') for p in my_players]
+        their_positions = [p.get('position', '') for p in their_players]
+        if len(my_players) > 1 and len(their_players) > 1:
+            if not self._check_multi_position_balance(my_positions, their_positions):
+                return None
+
+        # Build simulated rosters before and after
+        my_names = {p['name'] for p in my_players}
+        their_names = {p['name'] for p in their_players}
+        
+        user_roster_pre = list(current_roster)
+        partner_roster_pre = list(partner_roster)
+        
+        user_roster_post = [p for p in user_roster_pre if p['name'] not in my_names] + their_players
+        partner_roster_post = [p for p in partner_roster_pre if p['name'] not in their_names] + my_players
+
+        # Calculate Win Probabilities before and after using MatchupSimulator
+        win_prob_before = 50.0
+        win_prob_after = 50.0
+        try:
+            if self.simulator and user_roster_pre and partner_roster_pre:
+                sim_pre = self.simulator.simulate_matchup(user_roster_pre, partner_roster_pre)
+                win_prob_before = round(sim_pre.get('win_probability', 50.0), 1)
+
+                sim_post = self.simulator.simulate_matchup(user_roster_post, partner_roster_post)
+                win_prob_after = round(sim_post.get('win_probability', 50.0), 1)
+        except Exception as e:
+            # Fallback estimation based on value improvement
+            val_diff = their_total_value - my_total_value
+            win_prob_before = 50.0
+            win_prob_after = min(95.0, max(5.0, round(50.0 + (val_diff * 1.5), 1)))
+
+        win_prob_change = round(win_prob_after - win_prob_before, 1)
+
+        # Partner's perspective
+        partner_impact = round(-win_prob_change, 1)
+
+        # Analyze category impact for user and partner
+        my_stats_total = self._sum_player_stats(my_players)
+        their_stats_total = self._sum_player_stats(their_players)
+        category_changes = self._compare_stat_totals(my_stats_total, their_stats_total)
+
+        # Category surplus/deficit matching:
+        partner_val_gain = my_total_value - their_total_value
+        beneficial_for_both = (
+            abs(win_prob_change) <= 5.0 or (partner_val_gain >= -2.0) or len(category_changes.get('declines', [])) >= 2
+        )
+
+        # Plausibility score (0 to 100)
+        value_fairness = 1.0 - abs(my_total_value - their_total_value) / max(my_total_value, their_total_value)
+        plausibility_num = (value_fairness * 70.0) + (30.0 if beneficial_for_both else 10.0)
+        plausibility = "High" if plausibility_num >= 70 else ("Medium" if plausibility_num >= 45 else "Low")
+
+        # Overall ranking score: usefulness (win probability gain) + plausibility
+        overall_rank_score = (max(0.0, win_prob_change) * 0.6) + ((plausibility_num / 10.0) * 0.4)
+
+        my_fantasy_team = my_players[0].get('fantasy_team', 'My Team')
+        other_fantasy_team = their_players[0].get('fantasy_team', partner_team_name)
+
+        my_names_str = ', '.join(p['name'] for p in my_players)
+        their_names_str = ', '.join(p['name'] for p in their_players)
+
+        reasoning = (
+            f"🤝 Trade with {partner_team_name}: {my_names_str} for {their_names_str}. "
+            f"Win prob: {win_prob_before}% → {win_prob_after}% ({'+' if win_prob_change >= 0 else ''}{win_prob_change}%). "
+            f"{'Beneficial for both teams.' if beneficial_for_both else 'Fair market value.'}"
+        )
+
+        return {
+            'type': 'trade',
+            'swap_type': swap_type,
+            'trade_partner': partner_team_name,
+            'drop_players': [{
+                'name': p['name'],
+                'team': p.get('team', '-'),
+                'position': p.get('position', '-'),
+                'stats': p.get('stats', {}),
+                'value': round(self._calculate_player_value(p), 1),
+                'fantasy_team': p.get('fantasy_team', my_fantasy_team)
+            } for p in my_players],
+            'add_players': [{
+                'name': p['name'],
+                'team': p.get('team', '-'),
+                'position': p.get('position', '-'),
+                'stats': p.get('stats', {}),
+                'value': round(self._calculate_player_value(p), 1),
+                'fantasy_team': p.get('fantasy_team', other_fantasy_team)
+            } for p in their_players],
+            'impact_score': round(their_total_value - my_total_value, 1),
+            'win_probability_before': win_prob_before,
+            'win_probability_after': win_prob_after,
+            'win_prob_before': win_prob_before,
+            'win_prob_after': win_prob_after,
+            'win_prob_change': win_prob_change,
+            'partner_impact': partner_impact,
+            'beneficial_for_both': beneficial_for_both,
+            'plausibility': plausibility,
+            'plausibility_score': round(plausibility_num, 1),
+            'rank_score': round(overall_rank_score, 2),
+            'all_categories': category_changes.get('all_categories', []),
+            'category_improvements': category_changes.get('improvements', []),
+            'category_declines': category_changes.get('declines', []),
+            'reasoning': reasoning,
+            'priority': 'high' if win_prob_change >= 4.0 and beneficial_for_both else 'medium'
+        }
+
+    def _analyze_trade_opportunities(self, current_roster, other_teams_rosters):
+        """Analyze realistic, context-aware trade opportunities with other teams."""
         recommendations = []
         
-        print(f"🔍 _analyze_trade_opportunities: Current roster={len(current_roster)}, Other teams={len(other_teams_rosters)}")
-        
-        # Debug: Show other teams info
-        for team_data in other_teams_rosters:
-            team_name = team_data.get('team_name', 'Unknown')
-            team_roster = team_data.get('roster', [])
-            print(f"   Team: {team_name}, Players: {len(team_roster)}")
-            if team_roster:
-                sample_player = team_roster[0]
-                print(f"      Sample player: {sample_player.get('name')} - fantasy_team: {sample_player.get('fantasy_team', 'MISSING')}")
-        
-        # For each player in user's roster
+        if not current_roster or not other_teams_rosters:
+            return recommendations
+
+        print(f"[DEBUG] _analyze_trade_opportunities: Current roster={len(current_roster)}, Other teams={len(other_teams_rosters)}")
+
+        # 1. Realistic 1-for-1 trades
         for my_player in current_roster:
-            my_value = self._calculate_player_value(my_player)
-            my_position = my_player.get('position', '')
-            
-            # Check all other teams
             for team_data in other_teams_rosters:
                 team_name = team_data.get('team_name', 'Unknown Team')
                 team_roster = team_data.get('roster', [])
                 
-                # Check each player in other team
                 for other_player in team_roster:
-                    other_value = self._calculate_player_value(other_player)
-                    other_position = other_player.get('position', '')
-                    other_fantasy_team = other_player.get('fantasy_team', team_name)
-                    
-                    # Debug: Check if fantasy_team is set correctly
-                    if not other_player.get('fantasy_team'):
-                        print(f"⚠️ WARNING: {other_player['name']} from {team_name} has no fantasy_team field!")
-                    
-                    # Check if trade is realistic (values within 20%)
-                    value_ratio = other_value / my_value if my_value > 0 else 0
-                    
-                    # Only suggest if:
-                    # 1. Other player is better (10%+ improvement)
-                    # 2. Trade is realistic (values within 20% = ratio between 1.1 and 1.2)
-                    # 3. Positions are compatible
-                    if 1.1 <= value_ratio <= 1.25 and self._check_position_compatibility(my_position, other_position):
-                        improvement = other_value - my_value
-                        category_changes = self._analyze_category_improvements(my_player, other_player)
-                        
-                        # Get fantasy team names with fallback
-                        my_fantasy_team = my_player.get('fantasy_team', 'My Team')
-                        other_fantasy_team = other_player.get('fantasy_team', team_name)
-                        
-                        # Debug logging
-                        print(f"🔄 Trade: {my_player['name']} ({my_fantasy_team}) <-> {other_player['name']} ({other_fantasy_team})")
-                        
-                        recommendations.append({
-                            'type': 'trade',
-                            'swap_type': 'trade-1-for-1',
-                            'trade_partner': team_name,
-                            'drop_players': [{
-                                'name': my_player['name'],
-                                'team': my_player.get('team', '-'),
-                                'position': my_player.get('position', '-'),
-                                'stats': my_player.get('stats', {}),
-                                'value': round(my_value, 1),
-                                'fantasy_team': my_fantasy_team
-                            }],
-                            'add_players': [{
-                                'name': other_player['name'],
-                                'team': other_player.get('team', '-'),
-                                'position': other_player.get('position', '-'),
-                                'stats': other_player.get('stats', {}),
-                                'value': round(other_value, 1),
-                                'fantasy_team': other_fantasy_team
-                            }],
-                            'impact_score': round(improvement, 1),
-                            'all_categories': category_changes.get('all_categories', []),
-                            'category_improvements': category_changes['improvements'],
-                            'category_declines': category_changes['declines'],
-                            'reasoning': f"🤝 Trade with {team_name}: {my_player['name']} for {other_player['name']} ({', '.join(category_changes['improvements'][:2]) if category_changes['improvements'] else 'balanced upgrade'})",
-                            'priority': 'high' if improvement > 5.0 else 'medium'
-                        })
-                        
-                        # Limit trades per player to avoid too many suggestions
-                        if len([r for r in recommendations if r['drop_players'][0]['name'] == my_player['name']]) >= 3:
-                            break
-        
-        # Limit total 1-for-1 trade suggestions
-        one_for_one_trades = recommendations[:20]
-        
-        # 2. Multi-player trades (2-for-2, 3-for-3, 4-for-4)
-        print(f"🔍 Starting multi-player trade analysis...")
-        multi_trades = self._analyze_multi_player_trades(current_roster, other_teams_rosters)
-        print(f"✅ Found {len(multi_trades)} multi-player trade recommendations")
-        
-        # Combine all trades
-        all_trades = one_for_one_trades + multi_trades
-        
-        return all_trades[:40]  # Return top 40 total trades
-    
-    def _analyze_multi_player_trades(self, current_roster, other_teams_rosters):
-        """Analyze 2-for-2, 3-for-3, and 4-for-4 trade opportunities"""
-        recommendations = []
-        
-        # For each other team
-        for team_data in other_teams_rosters:
-            team_name = team_data.get('team_name', 'Unknown Team')
-            team_roster = team_data.get('roster', [])
-            
-            if len(team_roster) < 2:
-                continue
-            
-            # 2-for-2 trades (most common)
-            for my_combo in combinations(current_roster, 2):
-                my_total_value = sum(self._calculate_player_value(p) for p in my_combo)
+                    rec = self._evaluate_candidate_trade(
+                        current_roster, team_roster, [my_player], [other_player],
+                        team_name, swap_type='trade-1-for-1'
+                    )
+                    if rec:
+                        recommendations.append(rec)
+
+        # 2. Realistic 2-for-2 trades
+        if len(current_roster) >= 2:
+            my_2_combos = list(combinations(current_roster, 2))[:20]
+            for team_data in other_teams_rosters:
+                team_name = team_data.get('team_name', 'Unknown Team')
+                team_roster = team_data.get('roster', [])
+                if len(team_roster) < 2:
+                    continue
+                other_2_combos = list(combinations(team_roster, 2))[:20]
                 
-                for other_combo in combinations(team_roster, 2):
-                    other_total_value = sum(self._calculate_player_value(p) for p in other_combo)
-                    
-                    # Check if trade is realistic (within 25% value difference)
-                    if my_total_value == 0:
-                        continue
-                    
-                    value_ratio = other_total_value / my_total_value
-                    
-                    # 10-30% improvement, balanced trade
-                    if 1.1 <= value_ratio <= 1.3:
-                        improvement = other_total_value - my_total_value
-                        
-                        # Calculate category changes
-                        my_stats_total = self._sum_player_stats(my_combo)
-                        other_stats_total = self._sum_player_stats(other_combo)
-                        category_changes = self._compare_stat_totals(my_stats_total, other_stats_total)
-                        
-                        # Build recommendation
-                        my_fantasy_team = my_combo[0].get('fantasy_team', 'My Team')
-                        
-                        recommendations.append({
-                            'type': 'trade',
-                            'swap_type': 'trade-2-for-2',
-                            'trade_partner': team_name,
-                            'drop_players': [{
-                                'name': p['name'],
-                                'team': p.get('team', '-'),
-                                'position': p.get('position', '-'),
-                                'stats': p.get('stats', {}),
-                                'fantasy_team': p.get('fantasy_team', my_fantasy_team)
-                            } for p in my_combo],
-                            'add_players': [{
-                                'name': p['name'],
-                                'team': p.get('team', '-'),
-                                'position': p.get('position', '-'),
-                                'stats': p.get('stats', {}),
-                                'fantasy_team': p.get('fantasy_team', team_name)
-                            } for p in other_combo],
-                            'impact_score': round(improvement, 1),
-                            'all_categories': category_changes.get('all_categories', []),
-                            'category_improvements': category_changes['improvements'],
-                            'category_declines': category_changes['declines'],
-                            'reasoning': f"🤝 2-for-2 Trade with {team_name}: {', '.join(p['name'] for p in my_combo)} for {', '.join(p['name'] for p in other_combo)}",
-                            'priority': 'high' if improvement > 10.0 else 'medium'
-                        })
-                        
-                        # Limit 2-for-2 per team
-                        if len([r for r in recommendations if r.get('trade_partner') == team_name and r.get('swap_type') == 'trade-2-for-2']) >= 3:
-                            break
-            
-            # 3-for-3 trades (less common, bigger impact)
-            if len(current_roster) >= 3 and len(team_roster) >= 3:
-                my_combos_3 = list(combinations(current_roster, 3))[:15]  # Limit combos
-                other_combos_3 = list(combinations(team_roster, 3))[:15]
-                
-                for my_combo in my_combos_3:
-                    my_total_value = sum(self._calculate_player_value(p) for p in my_combo)
-                    
-                    for other_combo in other_combos_3:
-                        other_total_value = sum(self._calculate_player_value(p) for p in other_combo)
-                        
-                        if my_total_value == 0:
-                            continue
-                        
-                        value_ratio = other_total_value / my_total_value
-                        
-                        # 15-35% improvement for 3-for-3
-                        if 1.15 <= value_ratio <= 1.35:
-                            improvement = other_total_value - my_total_value
-                            
-                            my_stats_total = self._sum_player_stats(my_combo)
-                            other_stats_total = self._sum_player_stats(other_combo)
-                            category_changes = self._compare_stat_totals(my_stats_total, other_stats_total)
-                            
-                            my_fantasy_team = my_combo[0].get('fantasy_team', 'My Team')
-                            
-                            recommendations.append({
-                                'type': 'trade',
-                                'swap_type': 'trade-3-for-3',
-                                'trade_partner': team_name,
-                                'drop_players': [{
-                                    'name': p['name'],
-                                    'team': p.get('team', '-'),
-                                    'position': p.get('position', '-'),
-                                    'stats': p.get('stats', {}),
-                                    'fantasy_team': p.get('fantasy_team', my_fantasy_team)
-                                } for p in my_combo],
-                                'add_players': [{
-                                    'name': p['name'],
-                                    'team': p.get('team', '-'),
-                                    'position': p.get('position', '-'),
-                                    'stats': p.get('stats', {}),
-                                    'fantasy_team': p.get('fantasy_team', team_name)
-                                } for p in other_combo],
-                                'impact_score': round(improvement, 1),
-                                'all_categories': category_changes.get('all_categories', []),
-                                'category_improvements': category_changes['improvements'],
-                                'category_declines': category_changes['declines'],
-                                'reasoning': f"🤝 3-for-3 Trade with {team_name}: Major roster shake-up",
-                                'priority': 'high' if improvement > 15.0 else 'medium'
-                            })
-                            
-                            # Limit 3-for-3 per team
-                            if len([r for r in recommendations if r.get('trade_partner') == team_name and r.get('swap_type') == 'trade-3-for-3']) >= 2:
-                                break
-        
-        # Sort by impact
-        recommendations.sort(key=lambda x: x.get('impact_score', 0), reverse=True)
-        return recommendations[:20]  # Top 20 multi-player trades
+                for my_combo in my_2_combos:
+                    for other_combo in other_2_combos:
+                        rec = self._evaluate_candidate_trade(
+                            current_roster, team_roster, list(my_combo), list(other_combo),
+                            team_name, swap_type='trade-2-for-2'
+                        )
+                        if rec:
+                            recommendations.append(rec)
+
+        # Rank trades by overall usefulness and plausibility
+        recommendations.sort(key=lambda x: (x.get('rank_score', 0), x.get('win_prob_change', 0)), reverse=True)
+        return recommendations[:40]
     
     def _sum_player_stats(self, players):
         """Sum stats across multiple players (handles None values)"""
@@ -996,18 +1021,21 @@ class RecommendationEngine:
         """Fallback sample recommendations"""
         return [
             {
-                'type': 'add_drop',
-                'action': 'drop_add',
-                'drop_player': {
+                'type': 'single_swap',
+                'swap_type': '1-for-1',
+                'drop_players': [{
                     'name': 'Sample Player A',
                     'team': 'LAL',
-                    'position': 'SG'
-                },
-                'add_player': {
+                    'position': 'SG',
+                    'credit': 15
+                }],
+                'add_players': [{
                     'name': 'Sample Player B',
                     'team': 'BOS',
-                    'position': 'SF'
-                },
+                    'position': 'SF',
+                    'credit': 15
+                }],
+                'credit_change': 0,
                 'impact_score': 12.5,
                 'reasoning': 'Better all-around production',
                 'priority': 'high'

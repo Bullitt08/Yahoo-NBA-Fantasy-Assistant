@@ -5,15 +5,23 @@
 {% block content %}
 
 
-<div class="row">
-    <div class="col-12">
-        <h1><i class="fas fa-vs"></i> Matchup Simulator
-            <span class="badge bg-info" style="font-size: 0.5em;">{{ season }} Season</span>
-        </h1>
-        <p class="lead text-muted">Monte Carlo simulation analysis for your weekly matchup</p>
-        <hr>
+<div class="row align-items-center mb-3">
+    <div class="col-md-8">
+        <h1 class="mb-1"><i class="fas fa-balance-scale text-primary"></i> Matchup Simulator</h1>
+        <p class="lead text-muted mb-0">Monte Carlo simulation analysis for your weekly matchup</p>
+    </div>
+    <div class="col-md-4 text-md-end mt-2 mt-md-0">
+        <div class="d-inline-flex align-items-center gap-2">
+            <label class="small text-muted fw-bold text-nowrap"><i class="fas fa-calendar-alt"></i> Season:</label>
+            <select class="form-select form-select-sm" id="matchupSeasonSelect" style="width: auto;" onchange="changeMatchupSeason(this.value)">
+                {% for s in available_seasons|default(['2025-26', '2024-25', '2023-24', '2022-23', '2021-22']) %}
+                <option value="{{ s }}" {% if s == season %}selected{% endif %}>{{ s }} Season</option>
+                {% endfor %}
+            </select>
+        </div>
     </div>
 </div>
+<hr class="mt-0 mb-4">
 
 <!-- Team Selection Section -->
 <div class="row mb-4">
@@ -203,6 +211,13 @@
                                 {% endif %}
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="myTeamDropdown" id="myTeamDropdownMenu">
+                                <li><h6 class="dropdown-header">Select Team Source</h6></li>
+                                <li>
+                                    <a class="dropdown-item text-primary" href="#" onclick="selectDraftTeamAsMyTeam()">
+                                        <i class="fas fa-magic"></i> My Draft Team (from Draft Assistant)
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
                                 <li><h6 class="dropdown-header">Select from Yahoo League</h6></li>
                             </ul>
                         </span>
@@ -215,6 +230,9 @@
                     <div class="player-card">
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
+                                {% if player.roster_slot %}
+                                <span class="badge bg-primary me-1">{{ player.roster_slot }}</span>
+                                {% endif %}
                                 <strong>{{ player.name }}</strong>
                                 <br>
                                 <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
@@ -393,7 +411,8 @@
                             <ul class="dropdown-menu" aria-labelledby="opponentTeamDropdown" id="opponentTeamDropdownMenu">
                                 <li><h6 class="dropdown-header">Select from Yahoo League</h6></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#selectOpponentModal"><i class="fas fa-hand-pointer"></i> Manual Selection</a></li>
+                                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#selectOpponentModal"><i class="fas fa-hand-pointer"></i> Manual Selection (13 Players)</a></li>
+                                <li><a class="dropdown-item text-success" href="#" onclick="selectRandomOpponent()"><i class="fas fa-random"></i> Generate Random (13 Players)</a></li>
                             </ul>
                         </span>
                     </h5>
@@ -405,6 +424,9 @@
                     <div class="player-card">
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
+                                {% if player.roster_slot %}
+                                <span class="badge bg-danger me-1">{{ player.roster_slot }}</span>
+                                {% endif %}
                                 <strong>{{ player.name }}</strong>
                                 <br>
                                 <small class="text-muted">{{ player.position }} - {{ player.team }}</small>
@@ -618,10 +640,10 @@
             <div class="modal-header">
                 <div class="w-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h5 class="modal-title mb-0">Select Opponent Players (0/10)</h5>
+                        <h5 class="modal-title mb-0">Select Opponent Players (<span id="oppTeamCount">0</span>/13)</h5>
                         <div class="text-end">
                             <button class="btn btn-success btn-sm me-2" onclick="selectRandomOpponentInModal()" id="randomOppBtn">
-                                <i class="fas fa-random"></i> Generate Random
+                                <i class="fas fa-random"></i> Generate Random (13 Players)
                             </button>
                             <div class="badge bg-danger text-white fs-6" id="oppCreditDisplay">
                                 <i class="fas fa-coins"></i> Credit: <span id="oppCurrentCredit">0</span>/200
@@ -643,6 +665,9 @@
                         <span id="oppC2SlotStatus" class="badge bg-secondary">C</span>
                         <span id="oppUtil1SlotStatus" class="badge bg-secondary">UTIL</span>
                         <span id="oppUtil2SlotStatus" class="badge bg-secondary">UTIL</span>
+                        <span id="oppBn1SlotStatus" class="badge bg-secondary">BN</span>
+                        <span id="oppBn2SlotStatus" class="badge bg-secondary">BN</span>
+                        <span id="oppBn3SlotStatus" class="badge bg-secondary">BN</span>
                     </small>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -774,7 +799,8 @@
 let opponentTeam = [];
 let opponentRoster = {
     PG: null, SG: null, G: null, SF: null, PF: null,
-    F: null, C1: null, C2: null, UTIL1: null, UTIL2: null
+    F: null, C1: null, C2: null, UTIL1: null, UTIL2: null,
+    BN1: null, BN2: null, BN3: null
 };
 let playerRankings = []; // Will store credit values
 const allPlayers = {{ all_players|tojson|safe }};
@@ -848,59 +874,69 @@ function updateOppCreditDisplay() {
     }
 }
 
-// Assign player to opponent roster slot
-function assignToOpponentSlot(player) {
-    const positions = player.position.split('-');
+// Reassign all opponent players to slots (10 Starters + 3 Bench)
+function reassignOpponentRoster() {
+    opponentRoster = {
+        PG: null, SG: null, G: null, SF: null, PF: null,
+        F: null, C1: null, C2: null, UTIL1: null, UTIL2: null,
+        BN1: null, BN2: null, BN3: null
+    };
     
-    // Try to assign to specific position first
-    for (let pos of positions) {
-        if (pos === 'PG' && !opponentRoster.PG) {
-            opponentRoster.PG = player.name;
-            return;
-        }
-        if (pos === 'SG' && !opponentRoster.SG) {
-            opponentRoster.SG = player.name;
-            return;
-        }
-        if (pos === 'SF' && !opponentRoster.SF) {
-            opponentRoster.SF = player.name;
-            return;
-        }
-        if (pos === 'PF' && !opponentRoster.PF) {
-            opponentRoster.PF = player.name;
-            return;
-        }
-        if (pos === 'C' && !opponentRoster.C1) {
-            opponentRoster.C1 = player.name;
-            return;
-        }
-        if (pos === 'C' && !opponentRoster.C2) {
-            opponentRoster.C2 = player.name;
-            return;
-        }
-    }
+    const unassigned = [];
+    opponentTeam.forEach(name => {
+        const p = allPlayers.find(x => x.name === name) || { name: name, position: 'UTIL' };
+        unassigned.push({ ...p });
+    });
     
-    // Try G slot (PG or SG)
-    if ((positions.includes('PG') || positions.includes('SG')) && !opponentRoster.G) {
-        opponentRoster.G = player.name;
-        return;
-    }
+    const posMatch = (p, target) => {
+        const pos = (p.position || '').toUpperCase();
+        if (['PG', 'SG', 'SF', 'PF', 'C'].includes(target)) return pos.includes(target);
+        if (target === 'G') return pos.includes('PG') || pos.includes('SG') || pos.includes('G');
+        if (target === 'F') return pos.includes('SF') || pos.includes('PF') || pos.includes('F');
+        return true;
+    };
     
-    // Try F slot (SF or PF)
-    if ((positions.includes('SF') || positions.includes('PF')) && !opponentRoster.F) {
-        opponentRoster.F = player.name;
-        return;
-    }
+    // 1. Specific starters: PG, SG, SF, PF, C1, C2
+    const pureSlots = ['PG', 'SG', 'SF', 'PF', 'C1', 'C2'];
+    pureSlots.forEach(slot => {
+        const target = slot.startsWith('C') ? 'C' : slot;
+        const idx = unassigned.findIndex(p => posMatch(p, target));
+        if (idx !== -1) {
+            opponentRoster[slot] = unassigned[idx].name;
+            unassigned.splice(idx, 1);
+        }
+    });
     
-    // Try UTIL slots
-    if (!opponentRoster.UTIL1) {
-        opponentRoster.UTIL1 = player.name;
-        return;
-    }
-    if (!opponentRoster.UTIL2) {
-        opponentRoster.UTIL2 = player.name;
-        return;
-    }
+    // 2. Compound starters: G, F
+    ['G', 'F'].forEach(slot => {
+        const idx = unassigned.findIndex(p => posMatch(p, slot));
+        if (idx !== -1) {
+            opponentRoster[slot] = unassigned[idx].name;
+            unassigned.splice(idx, 1);
+        }
+    });
+    
+    // 3. UTIL starters (UTIL1, UTIL2)
+    ['UTIL1', 'UTIL2'].forEach(slot => {
+        if (unassigned.length > 0) {
+            opponentRoster[slot] = unassigned.shift().name;
+        }
+    });
+    
+    // 4. Bench slots (BN1, BN2, BN3)
+    ['BN1', 'BN2', 'BN3'].forEach(slot => {
+        if (unassigned.length > 0) {
+            opponentRoster[slot] = unassigned.shift().name;
+        }
+    });
+    
+    // 5. Leftover unassigned slots
+    const allSlots = ['PG', 'SG', 'G', 'SF', 'PF', 'F', 'C1', 'C2', 'UTIL1', 'UTIL2', 'BN1', 'BN2', 'BN3'];
+    allSlots.forEach(slot => {
+        if (!opponentRoster[slot] && unassigned.length > 0) {
+            opponentRoster[slot] = unassigned.shift().name;
+        }
+    });
 }
 
 // Update opponent roster status badges
@@ -915,7 +951,10 @@ function updateOpponentRosterStatus() {
         'C1': 'oppC1SlotStatus',
         'C2': 'oppC2SlotStatus',
         'UTIL1': 'oppUtil1SlotStatus',
-        'UTIL2': 'oppUtil2SlotStatus'
+        'UTIL2': 'oppUtil2SlotStatus',
+        'BN1': 'oppBn1SlotStatus',
+        'BN2': 'oppBn2SlotStatus',
+        'BN3': 'oppBn3SlotStatus'
     };
     
     Object.keys(slotMapping).forEach(slot => {
@@ -925,6 +964,7 @@ function updateOpponentRosterStatus() {
             let displayName = slot;
             if (slot === 'C1' || slot === 'C2') displayName = 'C';
             if (slot === 'UTIL1' || slot === 'UTIL2') displayName = 'UTIL';
+            if (slot === 'BN1' || slot === 'BN2' || slot === 'BN3') displayName = 'BN';
             
             badge.textContent = displayName;
             badge.className = isFilled ? 'badge bg-success' : 'badge bg-secondary';
@@ -1025,8 +1065,8 @@ function resetOppFilters() {
 }
 
 function addToOpponent(playerName, position) {
-    if (opponentTeam.length >= 10) {
-        showOppValidationMessage('Maximum 10 players can be selected!');
+    if (opponentTeam.length >= 13) {
+        showOppValidationMessage('Maximum 13 players can be selected!');
         return;
     }
     
@@ -1056,10 +1096,7 @@ function addToOpponent(playerName, position) {
     
     // Add player
     opponentTeam.push(playerName);
-    const player = allPlayers.find(p => p.name === playerName);
-    if (player) {
-        assignToOpponentSlot(player);
-    }
+    reassignOpponentRoster();
     
     updateOpponentModal();
     updateOpponentRosterStatus();
@@ -1070,13 +1107,7 @@ function addToOpponent(playerName, position) {
 function removeFromOpponent(playerName) {
     // Remove from array
     opponentTeam = opponentTeam.filter(name => name !== playerName);
-    
-    // Remove from roster slots
-    Object.keys(opponentRoster).forEach(slot => {
-        if (opponentRoster[slot] === playerName) {
-            opponentRoster[slot] = null;
-        }
-    });
+    reassignOpponentRoster();
     
     updateOpponentModal();
     updateOpponentRosterStatus();
@@ -1085,44 +1116,53 @@ function removeFromOpponent(playerName) {
 }
 
 function validateOppTeam() {
-    const totalSlots = 10;
+    const totalSlots = 13;
     const filledSlots = opponentTeam.length;
     
     const saveBtn = document.getElementById('saveOppBtn');
     const validationMsg = document.getElementById('oppValidationMessage');
     
+    let totalCredit = 0;
+    opponentTeam.forEach(pName => {
+        const ranking = playerRankings.find(r => r.name === pName);
+        if (ranking) {
+            totalCredit += ranking.credit || 0;
+        }
+    });
+    
     if (filledSlots < totalSlots) {
         saveBtn.disabled = true;
-        validationMsg.textContent = `${filledSlots}/10 players selected. Team not complete!`;
+        validationMsg.className = 'text-danger';
+        validationMsg.textContent = `${filledSlots}/13 players selected. Team not complete!`;
     } else if (filledSlots === totalSlots) {
-        // Check credit is close to 200
-        let totalCredit = 0;
-        opponentTeam.forEach(pName => {
-            const ranking = playerRankings.find(r => r.name === pName);
-            if (ranking) {
-                totalCredit += ranking.credit || 0;
-            }
-        });
-        
-        if (totalCredit < 180) {
+        if (totalCredit > 200) {
             saveBtn.disabled = true;
-            validationMsg.textContent = `Total credit too low: ${totalCredit}/200. Use at least 180 credits!`;
+            validationMsg.className = 'text-danger';
+            validationMsg.textContent = `Credit limit exceeded: ${totalCredit}/200. Max 200 credits allowed!`;
         } else {
             saveBtn.disabled = false;
-            validationMsg.textContent = '';
+            if (totalCredit < 170) {
+                validationMsg.className = 'text-warning';
+                validationMsg.textContent = `13 players selected (${totalCredit}/200 credits). You have ${200 - totalCredit} unused credits.`;
+            } else {
+                validationMsg.className = 'text-success';
+                validationMsg.textContent = `Ready! 13 players selected (${totalCredit}/200 credits).`;
+            }
         }
     } else {
         saveBtn.disabled = true;
-        validationMsg.textContent = 'Maximum 10 players can be selected!';
+        validationMsg.className = 'text-danger';
+        validationMsg.textContent = 'Maximum 13 players can be selected!';
     }
 }
 
 function showOppValidationMessage(message) {
     const validationMsg = document.getElementById('oppValidationMessage');
     if (validationMsg) {
+        validationMsg.className = 'text-danger';
         validationMsg.textContent = message;
         setTimeout(() => {
-            validationMsg.textContent = '';
+            validateOppTeam();
         }, 3000);
     }
 }
@@ -1130,7 +1170,11 @@ function showOppValidationMessage(message) {
 function updateOpponentModal() {
     const modalTitle = document.querySelector('#selectOpponentModal .modal-title');
     if (modalTitle) {
-        modalTitle.textContent = `Select Opponent Players (${opponentTeam.length}/10)`;
+        modalTitle.textContent = `Select Opponent Players (${opponentTeam.length}/13)`;
+    }
+    const countSpan = document.getElementById('oppTeamCount');
+    if (countSpan) {
+        countSpan.textContent = opponentTeam.length;
     }
     
     const addButtons = document.querySelectorAll('.add-opponent-btn');
@@ -1138,7 +1182,7 @@ function updateOpponentModal() {
         const playerName = btn.dataset.player;
         if (opponentTeam.includes(playerName)) {
             // Player already added - show remove button
-            btn.classList.remove('btn-success');
+            btn.classList.remove('btn-success', 'btn-secondary');
             btn.classList.add('btn-danger');
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-times"></i> Remove';
@@ -1146,7 +1190,7 @@ function updateOpponentModal() {
                 e.preventDefault();
                 removeFromOpponent(playerName);
             };
-        } else if (opponentTeam.length >= 10) {
+        } else if (opponentTeam.length >= 13) {
             // Team full
             btn.classList.remove('btn-success', 'btn-danger');
             btn.classList.add('btn-secondary');
@@ -1168,8 +1212,8 @@ function updateOpponentModal() {
 }
 
 function saveOpponent() {
-    if (opponentTeam.length < 10) {
-        alert(`Team not complete! ${opponentTeam.length}/10 players selected.`);
+    if (opponentTeam.length < 13) {
+        alert(`Team not complete! ${opponentTeam.length}/13 players selected.`);
         return;
     }
     
@@ -1182,22 +1226,14 @@ function saveOpponent() {
         }
     });
     
-    if (totalCredit < 180) {
-        alert(`Total credit too low: ${totalCredit}/200. Use at least 180 credits!`);
-        return;
-    }
-    
     if (totalCredit > 200) {
         alert(`Credit limit exceeded! Total: ${totalCredit}/200`);
         return;
     }
     
-    // Convert player names to match the format expected by matchup page
     const playerNames = opponentTeam.map(name => name);
     
-    console.log('[DEBUG] Saving manual opponent team:');
-    console.log('[DEBUG] Player names:', playerNames);
-    console.log('[DEBUG] Total players:', playerNames.length);
+    console.log('[DEBUG] Saving manual opponent team (13 players):', playerNames);
     
     fetch('/api/save-yahoo-opponent', {
         method: 'POST',
@@ -1243,6 +1279,7 @@ function selectRandomOpponentInModal() {
         if (data.success) {
             // Populate the modal with selected players
             opponentTeam = data.team;
+            reassignOpponentRoster();
             
             // Update modal UI
             updateOpponentModal();
@@ -1254,11 +1291,10 @@ function selectRandomOpponentInModal() {
             const validationMsg = document.getElementById('oppValidationMessage');
             if (validationMsg) {
                 validationMsg.className = 'text-success';
-                validationMsg.textContent = `Random team created! Total credit: ${data.total_credit}/200`;
+                validationMsg.textContent = `Random team created (13 players)! Total credit: ${data.total_credit}/200`;
                 setTimeout(() => {
-                    validationMsg.className = 'text-danger';
-                    validationMsg.textContent = '';
-                }, 3000);
+                    validateOppTeam();
+                }, 3500);
             }
             
             btn.innerHTML = originalHtml;
@@ -1299,6 +1335,32 @@ function clearOpponent() {
     }
 }
 
+function changeMatchupSeason(newSeason) {
+    if (!newSeason) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('season', newSeason);
+    window.location.href = url.toString();
+}
+
+function selectDraftTeamAsMyTeam() {
+    fetch('/api/matchup/select-draft-team', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                if (data.season) {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('season', data.season);
+                    window.location.href = url.toString();
+                } else {
+                    window.location.reload();
+                }
+            } else {
+                alert(data.error || 'Failed to select draft team. Please build and save a team in Draft Assistant first.');
+            }
+        })
+        .catch(err => alert('Error selecting draft team: ' + err.message));
+}
+
 // Load credits when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadOpponentCredits();
@@ -1333,16 +1395,17 @@ async function loadYahooTeamsForDropdowns() {
                     return;
                 }
                 
-                // Clear existing team items (keep header)
-                const myHeader = myTeamDropdownMenu.querySelector('.dropdown-header');
-                myTeamDropdownMenu.innerHTML = '';
-                if (myHeader) {
-                    myTeamDropdownMenu.appendChild(myHeader);
-                } else {
-                    const newHeader = document.createElement('li');
-                    newHeader.innerHTML = '<h6 class="dropdown-header">Select from Yahoo League</h6>';
-                    myTeamDropdownMenu.appendChild(newHeader);
-                }
+                // Reset My Team dropdown preserving draft assistant option
+                myTeamDropdownMenu.innerHTML = `
+                    <li><h6 class="dropdown-header">Select Team Source</h6></li>
+                    <li>
+                        <a class="dropdown-item text-primary" href="#" onclick="selectDraftTeamAsMyTeam()">
+                            <i class="fas fa-magic"></i> My Draft Team (from Draft Assistant)
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header">Select from Yahoo League</h6></li>
+                `;
                 
                 // Clear opponent menu but keep header, divider, and manual selection
                 const oppHeader = opponentDropdownMenu.querySelector('.dropdown-header');
@@ -1400,19 +1463,27 @@ async function loadYahooTeamsForDropdowns() {
                     opponentDropdownMenu.appendChild(newDivider);
                 }
                 
-                if (manualSelection) {
-                    opponentDropdownMenu.appendChild(manualSelection);
-                } else {
-                    const newManual = document.createElement('li');
-                    const manualLink = document.createElement('a');
-                    manualLink.className = 'dropdown-item';
-                    manualLink.href = '#';
-                    manualLink.setAttribute('data-bs-toggle', 'modal');
-                    manualLink.setAttribute('data-bs-target', '#selectOpponentModal');
-                    manualLink.innerHTML = '<i class="fas fa-hand-pointer"></i> Manual Selection';
-                    newManual.appendChild(manualLink);
-                    opponentDropdownMenu.appendChild(newManual);
-                }
+                const newManual = document.createElement('li');
+                const manualLink = document.createElement('a');
+                manualLink.className = 'dropdown-item';
+                manualLink.href = '#';
+                manualLink.setAttribute('data-bs-toggle', 'modal');
+                manualLink.setAttribute('data-bs-target', '#selectOpponentModal');
+                manualLink.innerHTML = '<i class="fas fa-hand-pointer"></i> Manual Selection (13 Players)';
+                newManual.appendChild(manualLink);
+                opponentDropdownMenu.appendChild(newManual);
+
+                const newRandom = document.createElement('li');
+                const randomLink = document.createElement('a');
+                randomLink.className = 'dropdown-item text-success';
+                randomLink.href = '#';
+                randomLink.onclick = (e) => {
+                    e.preventDefault();
+                    selectRandomOpponent();
+                };
+                randomLink.innerHTML = '<i class="fas fa-random"></i> Generate Random (13 Players)';
+                newRandom.appendChild(randomLink);
+                opponentDropdownMenu.appendChild(newRandom);
                 
                 console.log(`✅ Loaded ${teamsData.teams.length} teams into dropdowns`);
                 
@@ -1559,7 +1630,8 @@ document.getElementById('selectOpponentModal')?.addEventListener('shown.bs.modal
     opponentTeam = [];
     opponentRoster = {
         PG: null, SG: null, G: null, SF: null, PF: null,
-        F: null, C1: null, C2: null, UTIL1: null, UTIL2: null
+        F: null, C1: null, C2: null, UTIL1: null, UTIL2: null,
+        BN1: null, BN2: null, BN3: null
     };
     updateOpponentModal();
     updateOpponentRosterStatus();

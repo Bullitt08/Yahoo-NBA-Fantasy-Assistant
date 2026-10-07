@@ -23,6 +23,7 @@
         .recommendation-medium { border-left: 4px solid #ffc107; }
         .recommendation-low { border-left: 4px solid #6c757d; }
     </style>
+    {% block extra_head %}{% endblock %}
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -74,23 +75,44 @@
                 </ul>
                 
                 <!-- Season Selector -->
-                <ul class="navbar-nav mx-3">
+                <ul class="navbar-nav mx-2">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle btn btn-outline-info btn-sm" href="#" id="seasonDropdown" role="button" data-bs-toggle="dropdown" style="border-color: #17a2b8; color: #17a2b8;">
-                            <i class="fas fa-calendar-alt"></i> <span id="currentSeasonLabel">2025-26 Season</span>
+                            <i class="fas fa-calendar-alt"></i> <span id="currentSeasonLabel">{{ selected_season or current_nba_season or '2025-26' }} Season</span>
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item season-option" href="#" data-season="2025-26" data-year="2026">
-                                <i class="fas fa-check text-success" id="check-2026" style="display: none;"></i> 2025-26 Season
+                            {% for s in available_seasons|default(['2026-27', '2025-26', '2024-25', '2023-24', '2022-23', '2021-22']) %}
+                            <li><a class="dropdown-item season-option" href="#" data-season="{{ s }}">
+                                <i class="fas fa-check text-success check-icon" id="check-{{ s }}" style="display: none;"></i> {{ s }} Season
                             </a></li>
-                            <li><a class="dropdown-item season-option" href="#" data-season="2024-25" data-year="2025">
-                                <i class="fas fa-check text-success" id="check-2025" style="display: none;"></i> 2024-25 Season
-                            </a></li>
+                            {% endfor %}
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item season-option" href="#" data-season="yahoo-matchup" data-year="yahoo">
-                                <i class="fas fa-check text-success" id="check-yahoo" style="display: none;"></i> <i class="fab fa-yahoo text-warning"></i> Yahoo Matchup Stats
+                            <li><a class="dropdown-item season-option" href="#" data-season="yahoo-matchup">
+                                <i class="fas fa-check text-success check-icon" id="check-yahoo" style="display: none;"></i> <i class="fab fa-yahoo text-warning"></i> Yahoo Matchup Stats
                             </a></li>
                         </ul>
+                    </li>
+                </ul>
+
+                <!-- Global Stats Mode Toggle (Per Game / Total) -->
+                <ul class="navbar-nav me-3 align-items-center">
+                    <li class="nav-item">
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Global Stats Mode">
+                            <button type="button" 
+                                    id="globalModePerGameBtn"
+                                    class="btn btn-sm {% if (current_mode or mode) != 'total' %}btn-primary active{% else %}btn-outline-light{% endif %}" 
+                                    onclick="switchGlobalStatsMode('per_game')" 
+                                    title="View Per-Game Averages">
+                                <i class="fas fa-chart-line"></i> Per Game
+                            </button>
+                            <button type="button" 
+                                    id="globalModeTotalBtn"
+                                    class="btn btn-sm {% if (current_mode or mode) == 'total' %}btn-primary active{% else %}btn-outline-light{% endif %}" 
+                                    onclick="switchGlobalStatsMode('total')" 
+                                    title="View Season Totals">
+                                <i class="fas fa-calculator"></i> Total
+                            </button>
+                        </div>
                     </li>
                 </ul>
                 
@@ -126,18 +148,27 @@
         </div>
     </nav>
 
-    <div class="container mt-4">
+    <div class="{% block container_class %}container{% endblock %} mt-4">
         {% block content %}{% endblock %}
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
+        function switchGlobalStatsMode(newMode) {
+            localStorage.setItem('selectedMode', newMode);
+            const url = new URL(window.location.href);
+            url.searchParams.set('mode', newMode);
+            window.location.href = url.toString();
+        }
+
         // Season selector functionality
         document.addEventListener('DOMContentLoaded', function() {
-            // Get current season from URL or localStorage
+            // Get current season and mode from URL or localStorage or default
             const urlParams = new URLSearchParams(window.location.search);
-            let currentSeason = urlParams.get('season') || localStorage.getItem('selectedSeason') || '2025-26';
+            const defaultSeason = '{{ selected_season or current_nba_season or "2025-26" }}';
+            let currentSeason = urlParams.get('season') || localStorage.getItem('selectedSeason') || defaultSeason;
+            let currentMode = urlParams.get('mode') || localStorage.getItem('selectedMode') || '{{ current_mode or mode or "per_game" }}';
             
             // Update UI to show current season
             updateSeasonUI(currentSeason);
@@ -151,9 +182,10 @@
                     // Save to localStorage
                     localStorage.setItem('selectedSeason', season);
                     
-                    // Reload page with season parameter
+                    // Reload page with season and mode parameters
                     const url = new URL(window.location.href);
                     url.searchParams.set('season', season);
+                    url.searchParams.set('mode', currentMode);
                     window.location.href = url.toString();
                 });
             });
@@ -170,7 +202,7 @@
                 }
                 
                 // Show checkmark for selected season
-                document.querySelectorAll('[id^="check-"]').forEach(check => {
+                document.querySelectorAll('.check-icon').forEach(check => {
                     check.style.display = 'none';
                 });
                 
@@ -178,8 +210,7 @@
                     const checkmark = document.getElementById('check-yahoo');
                     if (checkmark) checkmark.style.display = 'inline';
                 } else {
-                    const year = season.split('-')[0] === '2025' ? '2026' : '2025';
-                    const checkmark = document.getElementById('check-' + year);
+                    const checkmark = document.getElementById('check-' + season);
                     if (checkmark) {
                         checkmark.style.display = 'inline';
                     }
